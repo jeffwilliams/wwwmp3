@@ -1,0 +1,181 @@
+<!doctype html>
+<html ng-app="player">
+  <head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.1/angular.min.js"></script>
+    <script src="js/module.js"></script>
+
+    <style>
+      #playback_pos_container {
+        position: relative;
+      }
+  
+      #playback_pos {
+        position: absolute; 
+        top: 50%; 
+        height: 1em; 
+        margin-top: 0.75em
+      }
+
+      .space {
+        padding-top: 3em;
+      }
+
+      .hspace {
+        padding-left: 2em;
+      }
+
+      .critlist {
+        height: 13em;
+        overflow: hidden;
+        overflow-y: scroll;
+      }
+  
+      .critlist_elem {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor:pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container" ng-controller="MainCtrl">
+      <div class="space"></div>
+
+      <div class="row">
+        <div class="col-md-1">
+          <table>
+            <tr>
+              <td><img src="img/{{playPauseImg()}}" ng-click="playPauseClicked()"/></td>
+              <td><img src="img/stop.png" ng-click="stopClicked()"/></td>
+            <tr>
+          </table>
+        </div>
+        <div class="col-md-2">
+          <div class="row">
+            <div class="col-md-12">
+              <strong>{{playingProp('title')}}</strong>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-12">
+              by <i>{{playingProp('artist')}}</i>
+            </div>
+          </div>
+        </div>
+        <div id="playback_pos_container" class="col-md-6">
+          <input id="playback_pos" type="range" min="0" max="100"/>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-1">
+          Volume
+        </div>
+        <div class="col-md-2">
+          <input type="range" min="0" max="100"/>
+        </div>
+      </div>
+
+      <div class="space"></div>
+
+      <div class="row">
+        <div class="col-md-2">
+          <strong>Play Queue</strong>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-trash" ng-click="clearPlayQueue()"></span>
+        </div>
+      </div>
+      <div class="row critlist">
+        <div class="col-md-10" ng-repeat="s in playQueue track by $index">
+          <span>{{s.title}} by <i>{{s.artist}}</i></span>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="removeFromPlayQueue(s)"></span>
+        </div>
+      </div>
+
+      <div class="space"></div>
+
+      <div class="row">
+        <div class="col-md-3">
+          <strong>Artist</strong>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="setArtistCriteria('')"></span>
+        </div>
+        <div class="col-md-2">
+          <strong>Album</strong>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="setAlbumCriteria('')"></span>
+        </div>
+        <div class="col-md-5">
+          <strong>Track</strong>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="setTitleCriteria('')"></span>
+        </div>
+        <div class="col-md-1">
+          <button class="form-control" ng-click="addSelectedToPlayQueue()">Queue</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-3">
+          <input type="text" class="form-control" ng-model="artistCriteria" />
+        </div>
+        <div class="col-md-2">
+          <input type="text" class="form-control" ng-model="albumCriteria" />
+        </div>
+        <div class="col-md-5">
+          <input type="text" class="form-control" ng-model="titleCriteria"/>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-3">
+          <div>
+            <div ng-repeat="s in artists" ng-click="setArtistCriteria(s)" class="critlist_elem">
+              {{s}}
+            </div>
+          </div>
+
+        </div>
+        <div class="col-md-2">
+          <div>
+            <!--<div ng-repeat="s in pagedAlbums()" ng-click="setAlbumCriteria(s)" class="critlist_elem">-->
+            <div ng-repeat="s in albums" ng-click="setAlbumCriteria(s)" class="critlist_elem">
+              {{s}}
+            </div>
+          </div>
+        </div>
+        <div class="col-md-5">
+          <select ng-options="s.title for s in songs" size="10" class="form-control" ng-model="song">
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-md-3">
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-left" ng-click="changeArtistPage(-1)"></span>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-right" ng-click="changeArtistPage(+1)"></span>
+        </div>
+        <div class="col-md-2">
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-left" ng-click="changeAlbumPage(-1)"></span>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-right" ng-click="changeAlbumPage(+1)"></span>
+        </div>
+        <div class="col-md-5">
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-left" ng-click="changeTitlePage(-1)"></span>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-right" ng-click="changeTitlePage(+1)"></span>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+  </body>
+</html>
+
+
