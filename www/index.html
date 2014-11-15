@@ -93,6 +93,8 @@
           <span>{{s.title}} by <i>{{s.artist}}</i></span>
           <span class="hspace"></span>
           <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="removeFromPlayQueue(s)"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-up" ng-click="moveInPlayQueue($index,-1)"></span>
+          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-down" ng-click="moveInPlayQueue($index,1)"></span>
         </div>
       </div>
 

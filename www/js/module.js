@@ -340,6 +340,19 @@ function MainCtrl($scope, $http){
     }
   }
 
+  $scope.moveInPlayQueue = function(index,delta){
+    if (delta < 0 ) delta = -1;
+    if (delta > 0 ) delta = 1;
+
+    if (index < 1 && delta == -1 || index > $scope.playQueue.length-2 && delta == 1){
+      return;
+    }
+    
+    var t = $scope.playQueue[index+delta]
+    $scope.playQueue[index+delta] = $scope.playQueue[index];
+    $scope.playQueue[index] = t;
+  }
+
   $scope.clearPlayQueue = function(s) {
     $scope.playQueue = [];
   }
