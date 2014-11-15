@@ -126,9 +126,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
   if r.Method == "GET" {
     // Query string Format:
     // Load an mp3:   
-    //  load: <path>
+    //  load=<path>
     // Play:
-    //  play: play
+    //  play=play
     if v := queryVal(r, "load"); len(v) > 0 {
       _, err := player.Load(v, nil)
       if err != nil {
