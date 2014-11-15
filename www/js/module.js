@@ -240,6 +240,67 @@ function MainCtrl($scope, $http){
       fixSelection($scope.songs, $scope.song, function(x){console.log("changing song to " + x); $scope.song = x} );
     })
   }
+
+  var playerLoadMp3 = function(path, callback){
+    var parms = {
+      'load': path
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+        if(callback){
+          callback();
+        }
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: loading mp3 failed: " + data);
+        $scope.playing = null;
+      });
+  }
+
+  var playerPlayMp3 = function(){
+    var parms = {
+      'play': 'play'
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+        $scope.state = "playing";
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: playing mp3 failed: " + data);
+        $scope.playing = null;
+      });
+  }
+
+  var playerPauseMp3 = function(){
+    var parms = {
+      'pause': 'pause'
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+        $scope.state = "paused";
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: pausing mp3 failed: " + data);
+      });
+  }
+
+  var playerStopMp3 = function(){
+    var parms = {
+      'stop': 'stop'
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+        $scope.playing = null;
+        $scope.state = null;
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: stopping mp3 failed: " + data);
+      });
+  }
   
   // Initial data load
   getArtists();
@@ -356,7 +417,7 @@ function MainCtrl($scope, $http){
       if($scope.playQueue.length > 0){
         $scope.playing = $scope.playQueue.shift();
         if ( $scope.playing ){
-          $scope.state = "playing";
+          playerLoadMp3($scope.playing.path, playerPlayMp3);
         }
       }
     }
@@ -377,8 +438,7 @@ function MainCtrl($scope, $http){
   }
 
   $scope.stopClicked = function() {
-    $scope.playing = null;
-    $scope.state = null;
+    playerStopMp3();
   }
 
   $scope.playPauseClicked = function() {
@@ -386,9 +446,9 @@ function MainCtrl($scope, $http){
       $scope.playNext();
     } else {
       if ($scope.state == "playing") {
-        $scope.state = "paused";
+        playerPauseMp3();
       } else {
-        $scope.state = "playing";
+        playerPlayMp3();
       }
     }
   }
