@@ -40,6 +40,13 @@ func SetVolume(pct byte) {
 	C.play_setvolume(C.uchar(pct))
 }
 
+/*
+Get the volume as a percentage between 0 and 100 inclusive.
+*/
+func GetVolume() byte {
+	return byte(C.play_getvolume())
+}
+
 type Metadata struct {
 	Title  string
 	Artist string
@@ -79,11 +86,13 @@ const (
   CmdPlay
   CmdPause
   CmdStop
+  CmdSeek
 )
 
 type command struct {
   id int
   path string
+  offset int
   err chan error
   // The player writes offsets to this channel periodically, if it is not nil
   offchan chan int
@@ -160,6 +169,17 @@ func NewPlayer() Player {
       }
     }
 
+    seek := func(cmd command){
+      if state == Empty {
+        return
+      }
+
+      C.play_seek(reader, C.int(cmd.offset))
+      // Zero out lastofftime
+      var zero time.Time
+      lastofftime = zero
+    }
+
     for {
       // Check for commands
       select{
@@ -173,6 +193,8 @@ func NewPlayer() Player {
           pause()
         case CmdStop:
           stop()
+        case CmdSeek:
+          seek(cmd)
         }
       default:
       }
@@ -192,8 +214,11 @@ func NewPlayer() Player {
         if offchan != nil {
           if lastofftime.IsZero() || time.Now().Sub(lastofftime) > time.Millisecond*100 {
             if o := int(C.play_offset(reader)); o != lastoff {
-              offchan <- o
-              lastofftime = time.Now()
+              select {
+              case offchan <- o:
+                lastofftime = time.Now()
+              default:
+              }
             }
           }
         }
@@ -227,4 +252,8 @@ func (p Player) Pause() {
 
 func (p Player) Stop() {
   p <- command{id: CmdStop}
+}
+
+func (p Player) Seek(offset int) {
+  p <- command{id: CmdSeek, offset: offset}
 }

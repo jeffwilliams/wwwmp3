@@ -19,6 +19,7 @@ typedef struct {
 void play_init();
 void play_free();
 int play_setvolume(unsigned char pct);
+unsigned char play_getvolume();
 void play_play(char* filename);
 
 play_reader_t* play_new_reader(char* filename);

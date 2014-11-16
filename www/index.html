@@ -67,7 +67,7 @@
           </div>
         </div>
         <div id="playback_pos_container" class="col-xs-6">
-          <input id="playback_pos" type="range" min="0" max="100"/>
+          <input id="playback_pos" type="range" min="0" max="{{maxPosition}}" ng-model="position" ng-mousedown="userChangingPosition=true" ng-mouseup="positionMouseup()"/>
         </div>
       </div>
       <div class="row">
@@ -75,7 +75,7 @@
           Volume
         </div>
         <div class="col-xs-2">
-          <input type="range" min="0" max="100"/>
+          <input type="range" min="0" max="100" ng-model="volume"/>
         </div>
       </div>
 

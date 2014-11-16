@@ -133,7 +133,7 @@ var playerModule = angular.module('player',[]);
 
 playerModule.controller('MainCtrl', MainCtrl)
 
-function MainCtrl($scope, $http){
+function MainCtrl($scope, $http, $timeout){
   //$scope.songs = sample_data();
 
   $scope.artistCriteria = "";
@@ -146,6 +146,12 @@ function MainCtrl($scope, $http){
   $scope.albumPageIsLast = true;
   $scope.titlePage = 0;
   $scope.titlePageIsLast = true;
+
+  $scope.volume = 50;
+
+  // Position in the file
+  $scope.position = 50;
+  $scope.maxPosition = 100;
 
   $scope.artists = []
   $scope.albums = []
@@ -160,6 +166,7 @@ function MainCtrl($scope, $http){
 
   $scope.playQueue = [];
 
+  $scope.playerOffsetWebsock = null;
 
   var fixSelection = function(items, selection, setter){
     if( items.length == 0 ) {
@@ -170,6 +177,55 @@ function MainCtrl($scope, $http){
       if( items.indexOf(selection) == -1 ){
         setter(items[0]);
       }
+    }
+  }
+
+  $scope.userChangingPosition = false;
+  var handlePlayerOffsetEvent = function(data){
+    if(data == "STOP"){ 
+      // Finished mp3.
+      $scope.playing = null;
+      $scope.state = null;
+      $scope.playNext();
+    } else {
+      $timeout(function(){
+        if(! $scope.userChangingPosition ){
+          $scope.position = data;
+        }
+      });
+    }
+  }
+
+  var playerEventsConnect = function(){
+    // Build the websocket URL based on the current window location.
+    var loc = window.location, new_uri;
+    new_uri = "ws://" + loc.host;
+    new_uri += "/playerEvents";
+
+    //socket = new WebSocket("ws://andor:2001/events");
+    $scope.playerOffsetWebsock = new WebSocket(new_uri);
+
+    $scope.playerOffsetWebsock.onmessage = function(event){
+
+      // Update the position in the file
+      handlePlayerOffsetEvent(event.data);
+      //console.log("File offset: " + event.data);
+    }
+
+    $scope.playerOffsetWebsock.onopen = function(event){
+      console.log("Player offsets: Connected to server")
+    }
+
+    $scope.playerOffsetWebsock.onclose = function(event){
+      console.log("Player offsets: Connection to server lost")
+      window.setTimeout(function(){
+        playerEventsConnect();
+      }
+      , 1000)
+    }
+
+    $scope.playerOffsetWebsock.onerror = function(event){
+      console.log("Player offsets: socket error: " + event);
     }
   }
 
@@ -248,6 +304,17 @@ function MainCtrl($scope, $http){
 
     $http.get("/player", {'params' : parms}).
       success(function(data,status,headers,config){
+        // Close websocket in case we were already connected
+        if(null != $scope.playerOffsetWebsock){
+          $scope.playerOffsetWebsock.close();
+        }
+        playerEventsConnect();
+
+        $scope.position = 0; 
+        if(data.size){
+          $scope.maxPosition = data.size;
+        }
+
         if(callback){
           callback();
         }
@@ -301,11 +368,49 @@ function MainCtrl($scope, $http){
         console.log("Error: stopping mp3 failed: " + data);
       });
   }
+
+  var gettingVolume = false
+  var playerGetVolume = function(){
+    gettingVolume = true
+    $http.get("/player", {'params' : {"getvolume":  "getvolume"}}).
+      success(function(data,status,headers,config){
+        $scope.volume = data.volume
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: getting volume failed: " + data);
+      });
+    gettingVolume = false
+  }
+
+  var playerSetVolume = function(){
+    $http.get("/player", {'params' : {"setvolume": $scope.volume}}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: setting volume failed: " + data);
+      });
+  }
+
+  var playerSeek = function(){
+    var parms = {
+      'seek': $scope.position
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+        $scope.userChangingPosition = false;
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: seeking mp3 failed: " + data);
+        $scope.userChangingPosition = false;
+      });
+  }
   
   // Initial data load
   getArtists();
   getAlbums();
   getSongs();
+  playerGetVolume();
 
   // Whenever one of our filters changes, reload the list of songs to match the filters.
   var filtersChanged = function(newValue, oldValue){
@@ -323,6 +428,15 @@ function MainCtrl($scope, $http){
   $scope.$watch('artistCriteria', filtersChanged);
   $scope.$watch('albumCriteria', filtersChanged);
   $scope.$watch('titleCriteria', filtersChanged);
+  $scope.$watch('volume', function(){
+    if(! gettingVolume ){
+      playerSetVolume();
+    }
+  });
+
+  $scope.positionMouseup = function(){
+    playerSeek();
+  }
 
   $scope.addSelectedToPlayQueue = function() {
     if($scope.song){

@@ -22,6 +22,7 @@ func main(){
   fmt.Printf("Album:  '%s'\n", meta.Album)
 
   play.SetVolume(50)
+  fmt.Println("Volume is", play.GetVolume())
 
   fmt.Println("Got passed",len(os.Args),"args")
 

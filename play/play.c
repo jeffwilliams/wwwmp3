@@ -27,6 +27,9 @@ int play_setvolume(unsigned char pct){
   int found_master = 0;
   long min, max, val;
 
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+
   if ((err = snd_mixer_open(&handle, 0)) < 0) {
     fprintf(stderr, "Mixer %s open error: %s\n", alsa_card, snd_strerror(err));
     return err;
@@ -36,13 +39,6 @@ int play_setvolume(unsigned char pct){
     snd_mixer_close(handle);
     return err;
   }
-  /*
-  if ((err = snd_mixer_selem_register(handle, smixer_level > 0 ? &smixer_options : NULL, NULL)) < 0) {
-    printf(stderr, "Mixer register error: %s\n", snd_strerror(err));
-    snd_mixer_close(handle);
-    return err;
-  }
-  */
   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0) {
     fprintf(stderr, "Mixer register error: %s\n", snd_strerror(err));
     snd_mixer_close(handle);
@@ -92,6 +88,87 @@ int play_setvolume(unsigned char pct){
   snd_mixer_close(handle);
 
   return 0;
+}
+
+unsigned char play_getvolume(){
+  int err;
+  snd_mixer_t *handle;
+  snd_mixer_selem_id_t *sid;
+  snd_mixer_elem_t *elem;
+  snd_mixer_selem_id_alloca(&sid);
+  int found_master = 0;
+  long min, max, val;
+  snd_mixer_selem_channel_id_t chan;
+
+  if ((err = snd_mixer_open(&handle, 0)) < 0) {
+    fprintf(stderr, "Mixer %s open error: %s\n", alsa_card, snd_strerror(err));
+    return err;
+  }
+  if (smixer_level == 0 && (err = snd_mixer_attach(handle, alsa_card)) < 0) {
+    fprintf(stderr, "Mixer attach %s error: %s\n", alsa_card, snd_strerror(err));
+    snd_mixer_close(handle);
+    return err;
+  }
+  if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0) {
+    fprintf(stderr, "Mixer register error: %s\n", snd_strerror(err));
+    snd_mixer_close(handle);
+    return err;
+  }
+  err = snd_mixer_load(handle);
+  if (err < 0) {
+    fprintf(stderr, "Mixer %s load error: %s\n", alsa_card, snd_strerror(err));
+    snd_mixer_close(handle);
+    return err;
+  }
+  
+  for (elem = snd_mixer_first_elem(handle); elem; elem = snd_mixer_elem_next(elem)) {
+    snd_mixer_selem_get_id(elem, sid);
+    if (!snd_mixer_selem_is_active(elem))
+      continue;
+    if (!strcmp(snd_mixer_selem_id_get_name(sid),"Master")){
+      found_master = 1;
+      break;
+    }
+  }
+
+  if (!found_master){
+    fprintf(stderr, "The 'Master' control was not found.\n");
+    snd_mixer_close(handle);
+    return -1;
+  }
+
+  printf("Simple mixer control '%s',%i\n", snd_mixer_selem_id_get_name(sid), snd_mixer_selem_id_get_index(sid));
+  if (snd_mixer_selem_has_playback_volume(elem)) {
+    if ((err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max)) < 0){
+      fprintf(stderr, "Mixer %s playback range error: %s\n", alsa_card, snd_strerror(err));
+      snd_mixer_close(handle);
+      return err;
+    }
+
+    // Find any playback channel
+    for(chan = SND_MIXER_SCHN_FRONT_LEFT; chan <  SND_MIXER_SCHN_LAST; chan++){
+      if( snd_mixer_selem_has_playback_channel(elem, chan)){
+        break;
+      }
+    }
+    if (chan == SND_MIXER_SCHN_LAST){
+      fprintf(stderr, "No available channel found\n");
+      snd_mixer_close(handle);
+      return err;
+    }
+
+    printf(" playback volume range: %d-%d\n", min, max);
+  }
+
+  if ((err = snd_mixer_selem_get_playback_volume(elem, chan, &val)) < 0){
+    fprintf(stderr, "Mixer %s get playback volume error: %s\n", alsa_card, snd_strerror(err));
+    snd_mixer_close(handle);
+    return err;
+  }
+
+  val = val*100L/(max-min);
+
+  return (unsigned char) val;
 }
 
 // Adapted from http://hzqtc.github.io/2012/05/play-mp3-with-libmpg123-and-libao.html
