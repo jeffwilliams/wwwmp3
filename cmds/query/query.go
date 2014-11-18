@@ -3,7 +3,7 @@ package main
 import (
   "database/sql"
   _ "github.com/mattn/go-sqlite3"
-  "scan"
+  "github.com/jeffwilliams/wwwmp3/scan"
   "flag"
   "fmt"
   "os"
