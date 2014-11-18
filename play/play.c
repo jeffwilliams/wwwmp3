@@ -282,12 +282,12 @@ size_t play_read(play_reader_t* reader) {
 
   err = mpg123_read(reader->mh, reader->buffer, reader->buffer_size, &done);
   
-  if (err == MPG123_ERR) {
-    fprintf(stderr, "mpg123 Read failed: %s\n", mpg123_plain_strerror(err));
-    errno = -1;
+  if (err == MPG123_OK) {
+    errno = 0;
   }
   else {
-    errno = 0;
+    fprintf(stderr, "mpg123 Read failed: %s\n", mpg123_plain_strerror(err));
+    errno = -1;
   }
 
   return done;

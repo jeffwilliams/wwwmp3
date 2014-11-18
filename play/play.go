@@ -206,7 +206,11 @@ func NewPlayer() Player {
           // We're done
           C.play_delete_reader(reader)
           C.play_delete_writer(writer)
+          if offchan != nil {
+            close(offchan)
+          }
           state = Empty
+          continue
         }
 
         C.play_write(writer, reader.buffer, n)

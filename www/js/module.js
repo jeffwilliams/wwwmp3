@@ -183,10 +183,13 @@ function MainCtrl($scope, $http, $timeout){
   $scope.userChangingPosition = false;
   var handlePlayerOffsetEvent = function(data){
     if(data == "STOP"){ 
+      console.log("mp3 finished");
       // Finished mp3.
-      $scope.playing = null;
-      $scope.state = null;
-      $scope.playNext();
+      $timeout(function(){
+        $scope.playing = null;
+        $scope.state = null;
+        $scope.playNext();
+      });
     } else {
       $timeout(function(){
         if(! $scope.userChangingPosition ){
