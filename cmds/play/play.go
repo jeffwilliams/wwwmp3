@@ -1,4 +1,4 @@
-// Simple mp3 player
+// Command play is a simple mp3 player.
 package main
 
 import (

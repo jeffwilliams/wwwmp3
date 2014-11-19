@@ -1,3 +1,4 @@
+// Package scan implements a simple scanner and database for mp3 id3 metainformation.
 package scan
 
 import (
@@ -9,11 +10,13 @@ import (
 	"strings"
 )
 
+// Metadata represents mp3 id3 metainformation as well as a filesystem path to the mp3 file.
 type Metadata struct {
 	play.Metadata
 	Path string
 }
 
+// Return a human readable version of the metadata. 
 func (m Metadata) String() string {
 	var b bytes.Buffer
 	b.Write([]byte("path: '"))
@@ -28,7 +31,7 @@ func (m Metadata) String() string {
 	return b.String()
 }
 
-/* Scan a directory structure for files. Pass all files to the files chan */
+// Scan a directory tree for files. Pass the full path of all files to the `files` chan.
 func Scan(basedir string, files chan string) {
 	defer func() {
 		close(files)
@@ -65,6 +68,7 @@ func Scan(basedir string, files chan string) {
 
 var mp3Regexp *regexp.Regexp = regexp.MustCompile(`\.[mM][pP]3$`)
 
+// Scan a directory tree for mp3 files. Pass the mp3 Metadata to the chan `meta`.
 func ScanMp3s(basedir string, meta chan Metadata) {
 	c := make(chan string)
 

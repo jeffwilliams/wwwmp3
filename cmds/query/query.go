@@ -1,3 +1,4 @@
+// Command query is a simple tool for querying data from the mp3 database.
 package main
 
 import (

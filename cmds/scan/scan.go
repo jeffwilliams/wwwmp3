@@ -1,3 +1,4 @@
+// Command scan is used to update an mp3 database with metainformation found under a directory tree.
 package main
 
 import (
@@ -64,28 +65,12 @@ func main() {
 		}
 
 		defer db.Close()
-		/*
-			opts := leveldb.NewOptions()
-			opts.SetCache(leveldb.NewLRUCache(2 << 10))
-			opts.SetCreateIfMissing(true)
-			db, err = leveldb.Open(*dbflag, opts)
-			if err != nil {
-				fmt.Println("Error opening database:", err)
-				os.Exit(1)
-			}
-			defer db.Close()
-		*/
 	}
 
 	if len(flag.Args()) < 1 {
 		fmt.Println("Pass the directory to scan")
 		os.Exit(1)
 	}
-
-	/*
-	  play.DebugMetadata(os.Args[1]);
-	  os.Exit(1)
-	*/
 
 	if !usedb {
 		c := make(chan scan.Metadata)
@@ -97,7 +82,6 @@ func main() {
 		}
 	} else {
 		c := make(chan int)
-		//go scan.ScanMp3sToDb(flag.Arg(0), db, &c)
 		go scan.ScanMp3sToDb(flag.Arg(0), db, &c)
 		for p := range c {
 			fmt.Println(p)

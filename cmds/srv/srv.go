@@ -1,14 +1,15 @@
+// Command srv implements a webserver that implements an mp3 player and hosts a UI for it.
+//
+// This command expects an mp3 database to be set up and filled.
 package main
 
 import (
 	"io"
 	"os"
 	"strings"
-	//"sort"
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	"net/http"
-	//"net"
 	"code.google.com/p/go.net/websocket"
 	"flag"
 	"fmt"

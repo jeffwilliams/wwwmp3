@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Mp3Db abstracts a sqlite3 database containing mp3 metainformation.
 type Mp3Db struct {
 	DB *sql.DB
 
@@ -28,6 +29,7 @@ func (m *Mp3Db) prepare() (err error) {
 	return
 }
 
+// Open an existing database and return the open Mp3Db struct. Expects db to be set to a valid, opened sql.DB.
 func OpenMp3Db(db *sql.DB) (r Mp3Db, err error) {
 	r = Mp3Db{
 		DB:           db,
@@ -42,6 +44,7 @@ func OpenMp3Db(db *sql.DB) (r Mp3Db, err error) {
 	return
 }
 
+// Close the database.
 func (m Mp3Db) Close() {
 	for _, f := range m.stmtCleaners {
 		f()
@@ -50,7 +53,7 @@ func (m Mp3Db) Close() {
 	m.DB.Close()
 }
 
-/* Create all the tables in the database */
+// Create the database schema and return the open Mp3Db struct. Expects db to be set to a valid, opened sql.DB.
 func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 	r = Mp3Db{
 		DB:           db,
@@ -67,8 +70,8 @@ func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 	return
 }
 
-/*
- */
+// ScanMp3sToDb scans a directory tree for mp3 files and updates `db` with the new mp3 information found.
+// If `prog` is not nil, it is passed the current number of files scanned every 100 files.
 func ScanMp3sToDb(basedir string, db Mp3Db, prog *chan int) {
 	if prog != nil {
 		defer close((*prog))
@@ -104,16 +107,7 @@ func ScanMp3sToDb(basedir string, db Mp3Db, prog *chan int) {
 	}
 }
 
-type Criteria struct {
-	Title  string
-	Artist string
-	Album  string
-}
-
-func (c Criteria) Empty() bool {
-	return len(c.Title) == 0 && len(c.Artist) == 0 && len(c.Album) == 0
-}
-
+// Paging describes what page of data to return.
 type Paging struct {
 	// Number of items in a page
 	PageSize int
@@ -132,6 +126,12 @@ func makelist(a []string, sep string) string {
 	return buf.String()
 }
 
+// FindMp3sInDb passes mp3 metainformation to channel `ch` for all mp3s matching the specified criteria.
+// `fields` should be a list of field names to return; allowed fields are "artist", "album", "title", "path".
+// `filt` should be a simple filter whos keys are fieldnames, and values are substrings of that field to match against.
+// `order` should be a list of field names to order ascending by.
+// `p` describes what page of data to return; PageSize rows are returned, starting at row Page*PageSize.
+// Results are written to `ch` as maps where the keys are fieldnames and values are field values.
 func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []string, ch chan map[string]string, p *Paging, quit chan bool) {
 	defer close(ch)
 
@@ -153,7 +153,10 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 			where.WriteString(k)
 			where.WriteString("),'")
 			where.WriteString(strings.ToLower(v))
-			where.WriteString("') = 1")
+      // Initial substring match:
+			//where.WriteString("') = 1")
+      // Anywhere match:
+			where.WriteString("') > 0")
 			clauses = append(clauses, where.String())
 			where.Reset()
 		}

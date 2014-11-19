@@ -17,7 +17,10 @@ void play_free(){
 
 static char alsa_card[64] = "default";
 static int smixer_level = 0;
-// Adapted from amixer source code
+/* 
+  Adapted from amixer source code.
+  This function sets the volume of the default output device as a percentage. pct should be between 0 and 100.
+*/
 int play_setvolume(unsigned char pct){
   int err;
   snd_mixer_t *handle;
