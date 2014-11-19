@@ -1,12 +1,12 @@
 package scan
 
 import (
+	"bytes"
 	"fmt"
-	"os"
 	"github.com/jeffwilliams/wwwmp3/play"
+	"os"
 	"regexp"
 	"strings"
-	"bytes"
 )
 
 type Metadata struct {
@@ -15,17 +15,17 @@ type Metadata struct {
 }
 
 func (m Metadata) String() string {
-  var b bytes.Buffer
-  b.Write([]byte("path: '"))
-  b.Write([]byte(m.Path))
-  b.Write([]byte("' artist: '"))
-  b.Write([]byte(m.Artist))
-  b.Write([]byte("' album: '"))
-  b.Write([]byte(m.Album))
-  b.Write([]byte("' title: '"))
-  b.Write([]byte(m.Title))
-  b.Write([]byte("'"))
-  return b.String()
+	var b bytes.Buffer
+	b.Write([]byte("path: '"))
+	b.Write([]byte(m.Path))
+	b.Write([]byte("' artist: '"))
+	b.Write([]byte(m.Artist))
+	b.Write([]byte("' album: '"))
+	b.Write([]byte(m.Album))
+	b.Write([]byte("' title: '"))
+	b.Write([]byte(m.Title))
+	b.Write([]byte("'"))
+	return b.String()
 }
 
 /* Scan a directory structure for files. Pass all files to the files chan */
@@ -78,7 +78,7 @@ func ScanMp3s(basedir string, meta chan Metadata) {
 		if mp3Regexp.MatchString(f) {
 			m := play.GetMetadata(f)
 			rectify(&m)
-      f = strings.Replace(f, "//","/",-1)
+			f = strings.Replace(f, "//", "/", -1)
 			meta <- Metadata{m, f}
 		}
 	}

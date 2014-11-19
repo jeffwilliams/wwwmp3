@@ -1,12 +1,12 @@
 package main
 
 import (
-  "database/sql"
-  _ "github.com/mattn/go-sqlite3"
-  "github.com/jeffwilliams/wwwmp3/scan"
-  "flag"
-  "fmt"
-  "os"
+	"database/sql"
+	"flag"
+	"fmt"
+	"github.com/jeffwilliams/wwwmp3/scan"
+	_ "github.com/mattn/go-sqlite3"
+	"os"
 )
 
 var artist = flag.String("artist", "", "Artist search criteria")
@@ -18,43 +18,44 @@ var page = flag.Int("page", -1, "The page in results to return")
 var pageSize = flag.Int("pageSize", 10, "Size of a page")
 
 func output(db scan.Mp3Db, filt map[string]string) {
-  quit := make(chan bool)
-  ch := make(chan map[string]string)
+	quit := make(chan bool)
+	ch := make(chan map[string]string)
 
-  var paging *scan.Paging
+	var paging *scan.Paging
 
-  if *page >= 0 {
-    paging = &scan.Paging{PageSize: *pageSize, Page: *page}
-  }
+	if *page >= 0 {
+		paging = &scan.Paging{PageSize: *pageSize, Page: *page}
+	}
 
-  fields := []string{"artist","album","title","path"}
-  if len(*field) > 0 {
-    fields = []string{*field}
-  }
+	fields := []string{"artist", "album", "title", "path"}
+	if len(*field) > 0 {
+		fields = []string{*field}
+	}
 
-  go scan.FindMp3sInDb(
-    db,
-    fields,
-    filt,
-    []string{"artist","album","title"},
-    ch,
-    paging,
-    quit)
+	go scan.FindMp3sInDb(
+		db,
+		fields,
+		filt,
+		[]string{"artist", "album", "title"},
+		ch,
+		paging,
+		quit)
 
-  for meta := range(ch) {
-    if _, ok := meta["eof"]; ok {
-      fmt.Println("<final page>")
-      break
-    } else {
-      if len(*field) > 0 {
-        fmt.Println(meta[*field])
-      } else {
-        fmt.Printf("    {artist: \"%s\", album: \"%s\", title: \"%s\", path: \"%s\"},\n",
-          meta["artist"], meta["album"], meta["title"], meta["path"])
-      }
-    }
-  }
+	for meta := range ch {
+		if _, ok := meta["eof"]; ok {
+			fmt.Println("<final page>")
+			break
+		} else {
+			if len(*field) > 0 {
+				fmt.Println(meta[*field])
+			} else {
+				fmt.Printf("    {artist: \"%s\", album: \"%s\", title: \"%s\", path: \"%s\"},\n",
+					meta["artist"], meta["album"], meta["title"], meta["path"])
+			}
+		}
+	}
 }
+
 /*
 func outputField(db scan.Mp3Db, c scan.Criteria, field scan.DbField) {
   quit := make(chan bool)
@@ -74,55 +75,55 @@ func outputField(db scan.Mp3Db, c scan.Criteria, field scan.DbField) {
 }
 */
 func main() {
-  flag.Parse()
+	flag.Parse()
 
-/*
-  var dbField scan.DbField = -1
-  if len(*field) > 0 {
-    var err error
-    dbField, err = scan.GetDbField(*field)
-    if err != nil {
-      fmt.Println("Unknown field type",*field)
-      os.Exit(1)
-    }
-  }
-*/
+	/*
+	   var dbField scan.DbField = -1
+	   if len(*field) > 0 {
+	     var err error
+	     dbField, err = scan.GetDbField(*field)
+	     if err != nil {
+	       fmt.Println("Unknown field type",*field)
+	       os.Exit(1)
+	     }
+	   }
+	*/
 
-  c := map[string]string {
-    "artist": *artist,
-    "album": *album,
-    "title": *title,
-  }
+	c := map[string]string{
+		"artist": *artist,
+		"album":  *album,
+		"title":  *title,
+	}
 
-  db, err := sql.Open("sqlite3",*dbflag)
-  if err != nil {
-    return
-  }
+	db, err := sql.Open("sqlite3", *dbflag)
+	if err != nil {
+		return
+	}
 
-  mp3db, err := scan.OpenMp3Db(db)
-  if err != nil {
-    fmt.Println("Error opening database:", err)
-    os.Exit(1)
-  }
-  defer mp3db.Close()
+	mp3db, err := scan.OpenMp3Db(db)
+	if err != nil {
+		fmt.Println("Error opening database:", err)
+		os.Exit(1)
+	}
+	defer mp3db.Close()
 
-  output(mp3db, c)
+	output(mp3db, c)
 
-/*
-  quit := make(chan bool)
-  ch := make(chan scan.Metadata)
+	/*
+	   quit := make(chan bool)
+	   ch := make(chan scan.Metadata)
 
-  go scan.FindMp3sInDb(db, c, ch, quit)
+	   go scan.FindMp3sInDb(db, c, ch, quit)
 
-  i := 0
-  for meta := range(ch) {
-    fmt.Printf("    {artist: \"%s\", album: \"%s\", title: \"%s\", path: \"%s\"},\n",
-      meta.Artist, meta.Album, meta.Title, meta.Path)
-    i++
-    if *max >= 0 && i >= *max {
-      quit <- true
-      // On the next iteration the channel will be closed so the loop will exit
-    }
-  }
-*/
+	   i := 0
+	   for meta := range(ch) {
+	     fmt.Printf("    {artist: \"%s\", album: \"%s\", title: \"%s\", path: \"%s\"},\n",
+	       meta.Artist, meta.Album, meta.Title, meta.Path)
+	     i++
+	     if *max >= 0 && i >= *max {
+	       quit <- true
+	       // On the next iteration the channel will be closed so the loop will exit
+	     }
+	   }
+	*/
 }
