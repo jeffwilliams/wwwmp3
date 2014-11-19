@@ -187,7 +187,7 @@ func playerEvents(ws *websocket.Conn) {
   fmt.Println("Websocket connection from ", ws.RemoteAddr())
 
   if offsetTee == nil {
-    fmt.Println("OffsetTee is nil")
+    fmt.Println("playerEvents (websocket handler): OffsetTee is nil. Try again after an mp3 is loaded.")
     return
   }
 
