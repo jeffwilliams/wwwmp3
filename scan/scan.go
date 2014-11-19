@@ -6,11 +6,26 @@ import (
 	"github.com/jeffwilliams/wwwmp3/play"
 	"regexp"
 	"strings"
+	"bytes"
 )
 
 type Metadata struct {
 	play.Metadata
 	Path string
+}
+
+func (m Metadata) String() string {
+  var b bytes.Buffer
+  b.Write([]byte("path: '"))
+  b.Write([]byte(m.Path))
+  b.Write([]byte("' artist: '"))
+  b.Write([]byte(m.Artist))
+  b.Write([]byte("' album: '"))
+  b.Write([]byte(m.Album))
+  b.Write([]byte("' title: '"))
+  b.Write([]byte(m.Title))
+  b.Write([]byte("'"))
+  return b.String()
 }
 
 /* Scan a directory structure for files. Pass all files to the files chan */

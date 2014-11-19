@@ -81,8 +81,22 @@ func ScanMp3sToDb(basedir string, db Mp3Db, prog *chan int) {
 
 	i := 0
   for m := range c {
-    // The following could fail if there's already that album. That's OK; the old entry is probably valid.
-    db.stmtAddMp3.Exec(m.Artist, m.Album, m.Title, m.Path)
+
+    //fmt.Println("Adding", m);
+
+    tx, err := db.DB.Begin()
+    if err != nil {
+      fmt.Println("ScanMp3sToDb: creating transaction failed:", err);
+    }
+    stmt := tx.Stmt(db.stmtAddMp3)
+    _, err = stmt.Exec(m.Artist, m.Album, m.Title, m.Path)
+    if err != nil {
+      fmt.Println("ScanMp3sToDb: inserting failed:", err);
+    }
+    err = tx.Commit();
+    if err != nil {
+      fmt.Println("ScanMp3sToDb: commit failed:", err);
+    }
 
 		i++
 		if prog != nil && i%100 == 0 {
