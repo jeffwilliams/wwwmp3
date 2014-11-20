@@ -25,7 +25,7 @@ func init() {
 	C.play_init()
 }
 
-//Play the specified file. Return when playback is complete.
+// Play the specified file. Return when playback is complete.
 func Play(filename string) {
 	n := C.CString(filename)
 	C.play_play(n)
@@ -105,14 +105,18 @@ func NewPlayer() Player {
 
 	p := make(chan command)
 
+  // This goroutine implements the player.
 	go func() {
-		var state PlayerState = Empty
 		var reader *C.play_reader_t
 		var writer *C.ao_device
 		var offchan chan int
 		var lastofftime time.Time
 		lastoff := -1
 
+		var state PlayerState = Empty
+    var states [3]func()
+
+    // Stop the currently playing mp3 if it's playing, and unload it.
 		stop := func() {
 			if state != Empty {
 				C.play_delete_reader(reader)
@@ -128,6 +132,7 @@ func NewPlayer() Player {
 			}
 		}
 
+    // Load a new mp3. Returns true if the state has changed.
 		load := func(cmd command) {
 			if state != Empty {
 				stop()
@@ -158,18 +163,21 @@ func NewPlayer() Player {
 			state = Paused
 		}
 
+    // Play the loaded mp3.
 		play := func() {
 			if state != Empty {
 				state = Playing
 			}
 		}
 
+    // Pause the playing mp3.
 		pause := func() {
 			if state != Empty {
 				state = Paused
 			}
 		}
 
+    // Seek to a position in the loaded mp3.
 		seek := func(cmd command) {
 			if state == Empty {
 				return
@@ -181,55 +189,95 @@ func NewPlayer() Player {
 			lastofftime = zero
 		}
 
+    states[Empty] = func(){
+      // Only the load command is not ignored.
+      for {
+			  select {
+        case cmd := <-p:
+          switch cmd.id {
+          case cmdLoad:
+					  load(cmd)
+          }
+        }
+
+        if state != Empty {
+          break
+        }
+      }
+    }
+
+    states[Paused] = func(){
+      for {
+			  select {
+        case cmd := <-p:
+          switch cmd.id {
+          case cmdLoad:
+					  load(cmd)
+          case cmdPlay:
+            play()
+          case cmdStop:
+            stop()
+          case cmdSeek:
+            seek(cmd)
+          }
+        }
+
+        if state != Paused {
+          break
+        }
+      }
+    }
+
+    states[Playing] = func(){
+      for {
+			  select {
+        case cmd := <-p:
+          switch cmd.id {
+          case cmdLoad:
+					  load(cmd)
+				  case cmdPause:
+					  pause()
+          case cmdStop:
+            stop()
+          case cmdSeek:
+            seek(cmd)
+          }
+          default:
+        }
+
+        if state != Playing {
+          break
+        }
+
+        // Copy a buffer of data to the output device
+        n, err := C.play_read(reader)
+        if err != nil {
+          // We're done
+          stop()
+          break
+        }
+
+        C.play_write(writer, reader.buffer, n)
+
+        if offchan != nil {
+          if lastofftime.IsZero() || time.Now().Sub(lastofftime) > time.Millisecond*100 {
+            if o := int(C.play_offset(reader)); o != lastoff {
+              select {
+              case offchan <- o:
+                lastofftime = time.Now()
+              default:
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Player state machine:
 		for {
-			// Check for commands
-			select {
-			case cmd := <-p:
-				switch cmd.id {
-				case cmdLoad:
-					load(cmd)
-				case cmdPlay:
-					play()
-				case cmdPause:
-					pause()
-				case cmdStop:
-					stop()
-				case cmdSeek:
-					seek(cmd)
-				}
-			default:
-			}
-
-			// If we are playing, copy a buffer of data to the output device
-			if state == Playing {
-				n, err := C.play_read(reader)
-				if err != nil {
-					// We're done
-					C.play_delete_reader(reader)
-					C.play_delete_writer(writer)
-					if offchan != nil {
-						close(offchan)
-					}
-					state = Empty
-					continue
-				}
-
-				C.play_write(writer, reader.buffer, n)
-
-				if offchan != nil {
-					if lastofftime.IsZero() || time.Now().Sub(lastofftime) > time.Millisecond*100 {
-						if o := int(C.play_offset(reader)); o != lastoff {
-							select {
-							case offchan <- o:
-								lastofftime = time.Now()
-							default:
-							}
-						}
-					}
-				}
-			}
-
+      states[state]()
 		}
+
 	}()
 
 	return p
