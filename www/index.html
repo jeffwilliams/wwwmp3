@@ -10,17 +10,6 @@
     <script src="js/module.js"></script>
 
     <style>
-      #playback_pos_container {
-        position: relative;
-      }
-  
-      #playback_pos {
-        position: absolute; 
-        top: 50%; 
-        height: 1em; 
-        margin-top: 0.75em
-      }
-
       .space {
         padding-top: 3em;
       }
@@ -41,6 +30,56 @@
         text-overflow: ellipsis;
         cursor:pointer;
       }
+
+      .vspace {
+        margin-bottom: 2em;
+      }
+
+      input[type=range]{
+        -webkit-appearance: none;
+      }
+
+      input[type='range'] {
+        -webkit-appearance: none;
+        border-radius: 5px;
+        box-shadow: inset 0 0 5px #333;
+        background-color: #999;
+        height: 10px;
+        vertical-align: middle;
+      }
+
+      input[type='range']::-moz-range-track {
+        -moz-appearance: none;
+        border-radius: 5px;
+        box-shadow: inset 0 0 5px #333;
+        background-color: #999;
+        height: 10px;
+      }
+
+      input[type='range']::-webkit-slider-thumb {
+        -webkit-appearance: none !important;
+        border-radius: 0.8em;
+        background-color: #FFF;
+        box-shadow:inset 0 0 10px rgba(000,000,000,0.5);
+        border: 1px solid #999;
+        height: 2em;
+        width: 4em;
+      }
+
+      input[type='range']::-moz-range-thumb {
+        -moz-appearance: none;
+        border-radius: 0.8em;
+        background-color: #FFF;
+        box-shadow:inset 0 0 10px rgba(000,000,000,0.5);
+        border: 1px solid #999;
+        height: 2em;
+        width: 4em;
+      }
+
+      .bigicon {
+        font-size: 2em;
+      }
+
     </style>
   </head>
   <body>
@@ -48,7 +87,13 @@
       <div class="space"></div>
 
       <div class="row">
-        <div class="col-xs-1">
+        <div id="playback_pos_container" class="col-xs-12">
+          <input id="playback_pos" type="range" min="0" max="{{maxPosition}}" ng-model="position" ng-mousedown="userChangingPosition=true" ng-mouseup="positionMouseup()"/>
+          <div class="vspace"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-xs-3">
           <table>
             <tr>
               <td><img src="img/{{playPauseImg()}}" ng-click="playPauseClicked()"/></td>
@@ -57,9 +102,11 @@
           </table>
         </div>
         <div class="col-xs-2">
+        </div>
+        <div class="col-xs-6">
           <div class="row">
             <div class="col-xs-12">
-              <strong>{{playingProp('title')}}</strong>
+              <h1>{{playingProp('title')}}</h1>
             </div>
           </div>
           <div class="row">
@@ -68,15 +115,14 @@
             </div>
           </div>
         </div>
-        <div id="playback_pos_container" class="col-xs-6">
-          <input id="playback_pos" type="range" min="0" max="{{maxPosition}}" ng-model="position" ng-mousedown="userChangingPosition=true" ng-mouseup="positionMouseup()"/>
-        </div>
       </div>
       <div class="row">
         <div class="col-xs-1">
-          Volume
+          <div class="vspace"></div>
+          <strong>Volume</strong>
         </div>
-        <div class="col-xs-2">
+        <div class="col-xs-11">
+          <div class="vspace"></div>
           <input type="range" min="0" max="100" ng-model="volume"/>
         </div>
       </div>
@@ -84,7 +130,7 @@
       <div class="space"></div>
 
       <div class="row">
-        <div class="col-xs-2">
+        <div class="col-xs-3">
           <strong>Play Queue</strong>
           <span class="hspace"></span>
           <span style="cursor:pointer;" class="glyphicon glyphicon-trash" ng-click="clearPlayQueue()"></span>
@@ -118,7 +164,7 @@
           <span class="hspace"></span>
           <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="setTitleCriteria('')"></span>
         </div>
-        <div class="col-xs-1">
+        <div class="col-xs-2">
           <button class="form-control" ng-click="addSelectedToPlayQueue()">Queue</button>
         </div>
       </div>
@@ -157,19 +203,32 @@
       </div>
       <div class="row">
         <div class="col-xs-3">
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-left" ng-click="changeArtistPage(-1)"></span>
-          <span class="hspace"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-right" ng-click="changeArtistPage(+1)"></span>
+          <div class="vspace"></div>
+          <div class="row">
+            <div class="col-xs-6">
+              <span style="cursor:pointer;" class="bigicon glyphicon glyphicon-chevron-left" ng-click="changeArtistPage(-1)"></span>
+            </div>
+            <div class="col-xs-1">
+              <span style="cursor:pointer;" class="bigicon glyphicon glyphicon-chevron-right" ng-click="changeArtistPage(+1)"></span>
+            </div>
+          </div>
         </div>
         <div class="col-xs-2">
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-left" ng-click="changeAlbumPage(-1)"></span>
+          <div class="vspace"></div>
+          <span style="cursor:pointer;" class="bigicon glyphicon glyphicon-chevron-left" ng-click="changeAlbumPage(-1)"></span>
           <span class="hspace"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-right" ng-click="changeAlbumPage(+1)"></span>
+          <span style="cursor:pointer;" class="bigicon glyphicon glyphicon-chevron-right" ng-click="changeAlbumPage(+1)"></span>
         </div>
         <div class="col-xs-5">
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-left" ng-click="changeTitlePage(-1)"></span>
-          <span class="hspace"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-right" ng-click="changeTitlePage(+1)"></span>
+          <div class="vspace"></div>
+          <div class="row">
+            <div class="col-xs-6">
+              <span style="cursor:pointer;" class="bigicon glyphicon glyphicon-chevron-left" ng-click="changeTitlePage(-1)"></span>
+            </div>
+            <div class="col-xs-1">
+              <span style="cursor:pointer;" class="bigicon glyphicon glyphicon-chevron-right" ng-click="changeTitlePage(+1)"></span>
+            </div>
+          </div>
         </div>
       </div>
 
