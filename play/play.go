@@ -112,7 +112,7 @@ func NewPlayer() Player {
 
 	p := make(chan command)
 
-  // This goroutine implements the player.
+	// This goroutine implements the player.
 	go func() {
 		var reader *C.play_reader_t
 		var writer *C.ao_device
@@ -121,15 +121,32 @@ func NewPlayer() Player {
 		lastoff := -1
 
 		var state PlayerState = Empty
-    var states [3]func()
+		var states [3]func()
 
-    // Stop the currently playing mp3 if it's playing, and unload it.
+		makeWriter := func() error {
+			if reader == nil {
+				return errors.New("Creating writer failed: reader was nil")
+			}
+			writer = C.play_new_writer(reader)
+			if writer == nil {
+				return errors.New("Creating writer failed")
+			}
+			return nil
+		}
+
+		deleteWriter := func() {
+			if writer != nil {
+				C.play_delete_writer(writer)
+				writer = nil
+			}
+		}
+
+		// Stop the currently playing mp3 if it's playing, and unload it.
 		stop := func() {
 			if state != Empty {
 				C.play_delete_reader(reader)
 				reader = nil
-				C.play_delete_writer(writer)
-				writer = nil
+				deleteWriter()
 
 				if offchan != nil {
 					close(offchan)
@@ -139,7 +156,7 @@ func NewPlayer() Player {
 			}
 		}
 
-    // Load a new mp3. Returns true if the state has changed.
+		// Load a new mp3. Returns true if the state has changed.
 		load := func(cmd command) {
 			if state != Empty {
 				stop()
@@ -154,12 +171,12 @@ func NewPlayer() Player {
 				return
 			}
 
-			writer = C.play_new_writer(reader)
-			if writer == nil {
+			err := makeWriter()
+			if err != nil {
 				close(cmd.size)
-				cmd.err <- errors.New("Creating writer failed")
 				C.play_delete_reader(reader)
 				reader = nil
+				cmd.err <- err
 				return
 			}
 
@@ -170,21 +187,37 @@ func NewPlayer() Player {
 			state = Paused
 		}
 
-    // Play the loaded mp3.
-		play := func() {
+		// Play the loaded mp3.
+		play := func(cmd command) {
 			if state != Empty {
+				if writer == nil {
+					// If we were paused we need to recreate the writer.
+					err := makeWriter()
+					if err != nil {
+						cmd.err <- err
+						return
+					}
+				}
 				state = Playing
 			}
+			cmd.err <- nil
 		}
 
-    // Pause the playing mp3.
+		// Pause the playing mp3.
 		pause := func() {
 			if state != Empty {
 				state = Paused
+
+				// We delete the writer here to release libao. This is so we don't have
+				// the audio device locked so that other applications that require sound
+				// can play sound.
+				if writer != nil {
+					deleteWriter()
+				}
 			}
 		}
 
-    // Seek to a position in the loaded mp3.
+		// Seek to a position in the loaded mp3.
 		seek := func(cmd command) {
 			if state == Empty {
 				return
@@ -196,93 +229,93 @@ func NewPlayer() Player {
 			lastofftime = zero
 		}
 
-    states[Empty] = func(){
-      // Only the load command is not ignored.
-      for {
-			  select {
-        case cmd := <-p:
-          switch cmd.id {
-          case cmdLoad:
-					  load(cmd)
-          }
-        }
+		states[Empty] = func() {
+			// Only the load command is not ignored.
+			for {
+				select {
+				case cmd := <-p:
+					switch cmd.id {
+					case cmdLoad:
+						load(cmd)
+					}
+				}
 
-        if state != Empty {
-          break
-        }
-      }
-    }
+				if state != Empty {
+					break
+				}
+			}
+		}
 
-    states[Paused] = func(){
-      for {
-			  select {
-        case cmd := <-p:
-          switch cmd.id {
-          case cmdLoad:
-					  load(cmd)
-          case cmdPlay:
-            play()
-          case cmdStop:
-            stop()
-          case cmdSeek:
-            seek(cmd)
-          }
-        }
+		states[Paused] = func() {
+			for {
+				select {
+				case cmd := <-p:
+					switch cmd.id {
+					case cmdLoad:
+						load(cmd)
+					case cmdPlay:
+						play(cmd)
+					case cmdStop:
+						stop()
+					case cmdSeek:
+						seek(cmd)
+					}
+				}
 
-        if state != Paused {
-          break
-        }
-      }
-    }
+				if state != Paused {
+					break
+				}
+			}
+		}
 
-    states[Playing] = func(){
-      for {
-			  select {
-        case cmd := <-p:
-          switch cmd.id {
-          case cmdLoad:
-					  load(cmd)
-				  case cmdPause:
-					  pause()
-          case cmdStop:
-            stop()
-          case cmdSeek:
-            seek(cmd)
-          }
-          default:
-        }
+		states[Playing] = func() {
+			for {
+				select {
+				case cmd := <-p:
+					switch cmd.id {
+					case cmdLoad:
+						load(cmd)
+					case cmdPause:
+						pause()
+					case cmdStop:
+						stop()
+					case cmdSeek:
+						seek(cmd)
+					}
+				default:
+				}
 
-        if state != Playing {
-          break
-        }
+				if state != Playing {
+					break
+				}
 
-        // Copy a buffer of data to the output device
-        n, err := C.play_read(reader)
-        if err != nil {
-          // We're done
-          stop()
-          break
-        }
+				// Copy a buffer of data to the output device
+				n, err := C.play_read(reader)
+				if err != nil {
+					// We're done
+					stop()
+					break
+				}
 
-        C.play_write(writer, reader.buffer, n)
+				C.play_write(writer, reader.buffer, n)
 
-        if offchan != nil {
-          if lastofftime.IsZero() || time.Now().Sub(lastofftime) > time.Millisecond*100 {
-            if o := int(C.play_offset(reader)); o != lastoff {
-              select {
-              case offchan <- o:
-                lastofftime = time.Now()
-              default:
-              }
-            }
-          }
-        }
-      }
-    }
+				if offchan != nil {
+					if lastofftime.IsZero() || time.Now().Sub(lastofftime) > time.Millisecond*100 {
+						if o := int(C.play_offset(reader)); o != lastoff {
+							select {
+							case offchan <- o:
+								lastofftime = time.Now()
+							default:
+							}
+						}
+					}
+				}
+			}
+		}
 
-    // Player state machine:
+		// Player state machine:
 		for {
-      states[state]()
+			states[state]()
 		}
 
 	}()
@@ -292,7 +325,7 @@ func NewPlayer() Player {
 
 // Load the specified file into the Player. Call Play to play the file.
 // Returns the size of the file in samples. On failure, err is non nil.
-// On success, the player will write the current playing offset (in samples) to offchan 
+// On success, the player will write the current playing offset (in samples) to offchan
 // periodically.
 func (p Player) Load(filename string, offchan chan int) (size int, err error) {
 	ch := make(chan error)
@@ -307,11 +340,17 @@ func (p Player) Load(filename string, offchan chan int) (size int, err error) {
 }
 
 // Play the currently loaded file. The player must have an mp3 loaded and not currently playing.
-func (p Player) Play() {
-	p <- command{id: cmdPlay}
+func (p Player) Play() (err error) {
+	ch := make(chan error)
+
+	p <- command{id: cmdPlay, err: ch}
+
+	err = <-ch
+
+	return
 }
 
-// Pause the currently playing file. 
+// Pause the currently playing file.
 func (p Player) Pause() {
 	p <- command{id: cmdPause}
 }
