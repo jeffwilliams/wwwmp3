@@ -18,7 +18,8 @@ typedef struct {
 
 void play_init();
 void play_free();
-int play_setvolume(unsigned char pct);
+int play_setvolume_all(unsigned char pct);
+int play_setvolume(unsigned char pct, char* card_name);
 unsigned char play_getvolume();
 void play_play(char* filename);
 

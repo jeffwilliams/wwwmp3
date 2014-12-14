@@ -17,11 +17,47 @@ void play_free(){
 
 static char alsa_card[64] = "default";
 static int smixer_level = 0;
+
+/*
+Adapted from alsa-mixer source code.
+Set the volume on all cards.
+*/
+int play_setvolume_all(unsigned char pct){
+  int err;
+  int result = 0;
+  int card_num = -1;
+  char* card_name;
+  snd_ctl_t *ctl;
+  snd_ctl_card_info_t *info;
+  char buf[16];
+
+  snd_ctl_card_info_alloca(&info);
+  for(;;) {
+    if ((err = snd_card_next(&card_num)) < 0) {
+      fprintf(stderr, "Enumerating sound cards failed: %s\n", snd_strerror(err));
+      return err;
+    }
+
+    if(card_num < 0)
+      break; 
+ 
+    sprintf(buf, "hw:%d", card_num);
+    err = play_setvolume(pct, buf);
+
+    if (0 == result && err < 0){
+      result = err;
+    }
+  }
+
+  return result;
+}
+
 /* 
   Adapted from amixer source code.
   This function sets the volume of the default output device as a percentage. pct should be between 0 and 100.
+  alsa_card should be the name of the ALSA card to open.
 */
-int play_setvolume(unsigned char pct){
+int play_setvolume(unsigned char pct, char* alsa_card){
   int err;
   snd_mixer_t *handle;
   snd_mixer_selem_id_t *sid;

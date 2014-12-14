@@ -33,8 +33,15 @@ func Play(filename string) {
 }
 
 // Set the volume as a percentage between 0 and 100 inclusive.
+// This method sets the volume on the default ALSA card.
 func SetVolume(pct byte) {
-	C.play_setvolume(C.uchar(pct))
+	C.play_setvolume(C.uchar(pct), C.CString("default"))
+}
+
+// Set the volume as a percentage between 0 and 100 inclusive.
+// This method sets the volume on all ALSA cards.
+func SetVolumeAll(pct byte) {
+	C.play_setvolume_all(C.uchar(pct))
 }
 
 // Get the volume as a percentage between 0 and 100 inclusive.

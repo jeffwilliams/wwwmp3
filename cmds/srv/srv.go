@@ -19,7 +19,9 @@ import (
 	"time"
 )
 
+var helpFlag = flag.Bool("help", false, "Print help")
 var dbflag = flag.String("db", "mp3.db", "database containing mp3 info")
+var allVolFlag = flag.Bool("allvol", false, "If set to true, changing the volume affects all ALSA cards, not just the default.")
 var db scan.Mp3Db
 
 // The mp3 player
@@ -164,7 +166,11 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(400)
 				w.Write([]byte("400 Bad Request: invalid numeric volume"))
 			} else {
-				play.SetVolume(byte(v))
+        if *allVolFlag {
+          play.SetVolumeAll(byte(v))
+        } else {
+          play.SetVolume(byte(v))
+        }
 			}
 		} else if s := queryVal(r, "seek"); len(s) > 0 {
 			v, err := strconv.Atoi(s)
@@ -249,6 +255,13 @@ func openDb(path string) (mp3db scan.Mp3Db, err error) {
 }
 
 func main() {
+  flag.Parse()
+
+  if *helpFlag {
+    flag.PrintDefaults()
+    os.Exit(0)
+  }
+
 	var err error
 
 	// Open database
