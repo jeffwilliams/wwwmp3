@@ -16,7 +16,7 @@ type Metadata struct {
 	Path string
 }
 
-// Return a human readable version of the metadata. 
+// Return a human readable version of the metadata.
 func (m Metadata) String() string {
 	var b bytes.Buffer
 	b.Write([]byte("path: '"))

@@ -166,7 +166,7 @@ function MainCtrl($scope, $http, $timeout){
 
   $scope.playQueue = [];
 
-  $scope.playerOffsetWebsock = null;
+  $scope.playerEventsWebsock = null;
 
   var fixSelection = function(items, selection, setter){
     if( items.length == 0 ) {
@@ -180,23 +180,59 @@ function MainCtrl($scope, $http, $timeout){
     }
   }
 
-  $scope.userChangingPosition = false;
-  var handlePlayerOffsetEvent = function(data){
-    if(data == "STOP"){ 
-      console.log("mp3 finished");
-      // Finished mp3.
+  /**************** PLAYER EVENT HANDLING ******************/
+  var handlePlayerOffsetEvent = function(position){
+    if($scope.position != position){
       $timeout(function(){
-        $scope.playing = null;
-        $scope.state = null;
-        $scope.playNext();
-      });
-    } else {
-      $timeout(function(){
-        if(! $scope.userChangingPosition ){
-          $scope.position = data;
-        }
+        $scope.position = position;
       });
     }
+  }
+
+  // Called when the server tells us the volume has changed
+  var handlePlayerVolumeEvent = function(volume){
+    if($scope.volume != volume){
+      // Since this is triggered outside Angular, we need to use $timeout to trigger
+      // angular to detect that the view was updated.
+      $timeout(function(){
+        $scope.volume = volume;
+      });
+    }
+  }
+
+  var handlePlayerSizeEvent = function(maxPosition){
+    if($scope.maxPosition != maxPosition){
+      // Since this is triggered outside Angular, we need to use $timeout to trigger
+      // angular to detect that the view was updated.
+      $timeout(function(){
+        $scope.maxPosition = maxPosition;
+      });
+    }
+  }
+
+  var handlePlayerMetaEvent = function(meta){
+    $timeout(function(){
+      $scope.playing = meta;
+    });
+  }
+
+  var handlePlayerStateEvent = function(state){
+    /* State returned from the server is an enumeration with the values:
+        0 = empty
+        1 = playing
+        2 = paused
+     */
+    $timeout(function(){
+      if(state == 0){
+        $scope.state = null;
+        $scope.playing = null;
+        $scope.playNext();
+      } else if (state == 1 ){
+        $scope.state = "playing";
+      } else {
+        $scope.state = "paused";
+      }
+    });
   }
 
   var playerEventsConnect = function(){
@@ -206,20 +242,32 @@ function MainCtrl($scope, $http, $timeout){
     new_uri += "/playerEvents";
 
     //socket = new WebSocket("ws://andor:2001/events");
-    $scope.playerOffsetWebsock = new WebSocket(new_uri);
+    $scope.playerEventsWebsock = new WebSocket(new_uri);
 
-    $scope.playerOffsetWebsock.onmessage = function(event){
+    $scope.playerEventsWebsock.onmessage = function(event){
 
       // Update the position in the file
-      handlePlayerOffsetEvent(event.data);
-      //console.log("File offset: " + event.data);
+      console.log("Got player event:")
+      console.log(event.data);
+
+      var e = angular.fromJson(event.data);
+      if("Volume" in e) 
+        handlePlayerVolumeEvent(e["Volume"])
+      if("Offset" in e) 
+        handlePlayerOffsetEvent(e["Offset"])
+      if("Size" in e) 
+        handlePlayerSizeEvent(e["Size"])
+      if("Meta" in e) 
+        handlePlayerMetaEvent(e["Meta"])
+      if("State" in e) 
+        handlePlayerStateEvent(e["State"])
     }
 
-    $scope.playerOffsetWebsock.onopen = function(event){
+    $scope.playerEventsWebsock.onopen = function(event){
       console.log("Player offsets: Connected to server")
     }
 
-    $scope.playerOffsetWebsock.onclose = function(event){
+    $scope.playerEventsWebsock.onclose = function(event){
       console.log("Player offsets: Connection to server lost")
       window.setTimeout(function(){
         playerEventsConnect();
@@ -227,10 +275,13 @@ function MainCtrl($scope, $http, $timeout){
       , 1000)
     }
 
-    $scope.playerOffsetWebsock.onerror = function(event){
+    $scope.playerEventsWebsock.onerror = function(event){
       console.log("Player offsets: socket error: " + event);
     }
   }
+  /**************** END PLAYER EVENT HANDLING ******************/
+
+  /**************** MP3 METAINFORMATION ******************/
 
   var getMp3Data = function(page, fields, orderField, callback) {
     var parms = {
@@ -300,180 +351,6 @@ function MainCtrl($scope, $http, $timeout){
     })
   }
 
-  var playerLoadMp3 = function(path, callback){
-    var parms = {
-      'load': path
-    }
-
-    $http.get("/player", {'params' : parms}).
-      success(function(data,status,headers,config){
-        // Close websocket in case we were already connected
-        if(null != $scope.playerOffsetWebsock){
-          $scope.playerOffsetWebsock.close();
-        }
-        playerEventsConnect();
-
-        $scope.position = 0; 
-        if(data.size){
-          $scope.maxPosition = data.size;
-        }
-
-        if(callback){
-          callback();
-        }
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: loading mp3 failed: " + data);
-        $scope.playing = null;
-      });
-  }
-
-  var playerPlayMp3 = function(){
-    var parms = {
-      'play': 'play'
-    }
-
-    $http.get("/player", {'params' : parms}).
-      success(function(data,status,headers,config){
-        $scope.state = "playing";
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: playing mp3 failed: " + data);
-        $scope.playing = null;
-      });
-  }
-
-  var playerPauseMp3 = function(){
-    var parms = {
-      'pause': 'pause'
-    }
-
-    $http.get("/player", {'params' : parms}).
-      success(function(data,status,headers,config){
-        $scope.state = "paused";
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: pausing mp3 failed: " + data);
-      });
-  }
-
-  var playerStopMp3 = function(){
-    var parms = {
-      'stop': 'stop'
-    }
-
-    $http.get("/player", {'params' : parms}).
-      success(function(data,status,headers,config){
-        $scope.playing = null;
-        $scope.state = null;
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: stopping mp3 failed: " + data);
-      });
-  }
-
-  var gettingVolume = false
-  var playerGetVolume = function(){
-    gettingVolume = true
-    $http.get("/player", {'params' : {"getvolume":  "getvolume"}}).
-      success(function(data,status,headers,config){
-        $scope.volume = data.volume
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: getting volume failed: " + data);
-      });
-    gettingVolume = false
-  }
-
-  var playerSetVolume = function(){
-    $http.get("/player", {'params' : {"setvolume": $scope.volume}}).
-      success(function(data,status,headers,config){
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: setting volume failed: " + data);
-      });
-  }
-
-  var playerSeek = function(){
-    var parms = {
-      'seek': $scope.position
-    }
-
-    $http.get("/player", {'params' : parms}).
-      success(function(data,status,headers,config){
-        $scope.userChangingPosition = false;
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: seeking mp3 failed: " + data);
-        $scope.userChangingPosition = false;
-      });
-  }
-  
-  // Initial data load
-  getArtists();
-  getAlbums();
-  getSongs();
-  playerGetVolume();
-
-  // Whenever one of our filters changes, reload the list of songs to match the filters.
-  var filtersChanged = function(newValue, oldValue){
-    if(newValue != oldValue){
-      $scope.artistPage = 0;
-      $scope.albumPage = 0;
-      $scope.titlePage = 0;
-      
-      getArtists();
-      getAlbums();
-      getSongs();
-    }
-  }
-
-  $scope.$watch('artistCriteria', filtersChanged);
-  $scope.$watch('albumCriteria', filtersChanged);
-  $scope.$watch('titleCriteria', filtersChanged);
-  $scope.$watch('volume', function(){
-    if(! gettingVolume ){
-      playerSetVolume();
-    }
-  });
-
-  $scope.positionMouseup = function(){
-    playerSeek();
-  }
-
-  $scope.addSelectedToPlayQueue = function() {
-    if($scope.song){
-      console.log("$scope.addSelectedToPlayQueue called. song title = " + $scope.song.title);
-      $scope.playQueue.push($scope.song);
-    }
-
-    $scope.playNext();
-  }
-
-  $scope.removeFromPlayQueue = function(s) {
-    var i = $scope.playQueue.indexOf(s);
-    if( i >= 0 ){
-      $scope.playQueue.splice(i,1);
-    }
-  }
-
-  $scope.moveInPlayQueue = function(index,delta){
-    if (delta < 0 ) delta = -1;
-    if (delta > 0 ) delta = 1;
-
-    if (index < 1 && delta == -1 || index > $scope.playQueue.length-2 && delta == 1){
-      return;
-    }
-    
-    var t = $scope.playQueue[index+delta]
-    $scope.playQueue[index+delta] = $scope.playQueue[index];
-    $scope.playQueue[index] = t;
-  }
-
-  $scope.clearPlayQueue = function(s) {
-    $scope.playQueue = [];
-  }
-
   $scope.setArtistCriteria = function(s) {
     $scope.artistCriteria = s;
   }
@@ -533,13 +410,167 @@ function MainCtrl($scope, $http, $timeout){
       getSongs();
     }
   }
+  /**************** END MP3 METAINFORMATION ******************/
 
-  $scope.playingProp = function(prop){
-    if($scope.playing){
-      return $scope.playing[prop];
-    } else {
-      return "-";
+  /**************** PLAYER REQUESTS ******************/
+  var playerLoadMp3 = function(path, callback){
+    var parms = {
+      'load': path
     }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+        if(data.size){
+          $scope.maxPosition = data.size;
+        }
+
+        if(callback){
+          callback();
+        }
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: loading mp3 failed: " + data);
+      });
+  }
+
+  var playerPlayMp3 = function(){
+    var parms = {
+      'play': 'play'
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: playing mp3 failed: " + data);
+      });
+  }
+
+  var playerPauseMp3 = function(){
+    var parms = {
+      'pause': 'pause'
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: pausing mp3 failed: " + data);
+      });
+  }
+
+  var playerStopMp3 = function(){
+    var parms = {
+      'stop': 'stop'
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: stopping mp3 failed: " + data);
+      });
+  }
+
+  var playerGetVolume = function(){
+    $http.get("/player", {'params' : {"getvolume":  "getvolume"}}).
+      success(function(data,status,headers,config){
+        $scope.volume = data.volume
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: getting volume failed: " + data);
+      });
+  }
+
+  var playerSetVolume = function(){
+    $http.get("/player", {'params' : {"setvolume": $scope.volume}}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: setting volume failed: " + data);
+      });
+  }
+
+  var playerSeek = function(){
+    var parms = {
+      'seek': $scope.position
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: seeking mp3 failed: " + data);
+      });
+  }
+  /**************** END PLAYER REQUESTS ******************/
+  
+  // Initial data load
+  getArtists();
+  getAlbums();
+  getSongs();
+  playerGetVolume();
+
+  // Connect websocket
+  playerEventsConnect();
+
+  // Whenever one of our filters changes, reload the list of songs to match the filters.
+  var filtersChanged = function(newValue, oldValue){
+    if(newValue != oldValue){
+      $scope.artistPage = 0;
+      $scope.albumPage = 0;
+      $scope.titlePage = 0;
+      
+      getArtists();
+      getAlbums();
+      getSongs();
+    }
+  }
+
+  $scope.$watch('artistCriteria', filtersChanged);
+  $scope.$watch('albumCriteria', filtersChanged);
+  $scope.$watch('titleCriteria', filtersChanged);
+
+  $scope.volumeMouseup = function(){
+    playerSetVolume();
+  }
+
+  $scope.positionMouseup = function(){
+    playerSeek();
+  }
+
+  /**************** PLAY QUEUE ******************/
+  $scope.addSelectedToPlayQueue = function() {
+    if($scope.song){
+      console.log("$scope.addSelectedToPlayQueue called. song title = " + $scope.song.title);
+      $scope.playQueue.push($scope.song);
+    }
+
+    $scope.playNext();
+  }
+
+  $scope.removeFromPlayQueue = function(s) {
+    var i = $scope.playQueue.indexOf(s);
+    if( i >= 0 ){
+      $scope.playQueue.splice(i,1);
+    }
+  }
+
+  $scope.moveInPlayQueue = function(index,delta){
+    if (delta < 0 ) delta = -1;
+    if (delta > 0 ) delta = 1;
+
+    if (index < 1 && delta == -1 || index > $scope.playQueue.length-2 && delta == 1){
+      return;
+    }
+    
+    var t = $scope.playQueue[index+delta]
+    $scope.playQueue[index+delta] = $scope.playQueue[index];
+    $scope.playQueue[index] = t;
+  }
+
+  $scope.clearPlayQueue = function(s) {
+    $scope.playQueue = [];
   }
 
   $scope.playNext = function(){
@@ -550,6 +581,16 @@ function MainCtrl($scope, $http, $timeout){
           playerLoadMp3($scope.playing.path, playerPlayMp3);
         }
       }
+    }
+  }
+  /**************** END PLAY QUEUE ******************/
+
+
+  $scope.playingProp = function(prop){
+    if($scope.playing){
+      return $scope.playing[prop];
+    } else {
+      return "-";
     }
   }
 

@@ -126,18 +126,23 @@ func makelist(a []string, sep string) string {
 	return buf.String()
 }
 
+// Escape the ticks (') in the string
+func escape(s string) string {
+  return strings.Replace(s, "'", "''", -1)
+}
+
 // FindMp3sInDb passes mp3 metainformation to channel `ch` for all mp3s matching the specified criteria.
-// `fields` should be a list of field names to return; allowed fields are "artist", "album", "title", "path".
-// `filt` should be a simple filter whos keys are fieldnames, and values are substrings of that field to match against.
-// `order` should be a list of field names to order ascending by.
+// `fields` should be a list of field names to return; allowed fields are "artist", "album", "title", "path". If fields is nil, all fields are returned.
+// `filt` should be a simple filter whos keys are fieldnames, and values are substrings of that field to match against. If filt is nil, no filter is applied.
+// `order` should be a list of field names to order ascending by, or nil for no ordering.
 // `p` describes what page of data to return; PageSize rows are returned, starting at row Page*PageSize.
 // Results are written to `ch` as maps where the keys are fieldnames and values are field values.
-func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []string, ch chan map[string]string, p *Paging, quit chan bool) {
+func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []string, ch chan map[string]string, p *Paging) {
 	defer close(ch)
 
 	var sql bytes.Buffer
 
-	if len(fields) == 0 {
+	if fields == nil || len(fields) == 0 {
 		fields = []string{"artist", "album", "title", "path"}
 	}
 
@@ -147,18 +152,20 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 
 	clauses := make([]string, 0)
 	var where bytes.Buffer
-	for k, v := range filt {
-		if len(v) > 0 {
-			where.WriteString("instr(lower(")
-			where.WriteString(k)
-			where.WriteString("),'")
-			where.WriteString(strings.ToLower(v))
-      // Initial substring match:
-			//where.WriteString("') = 1")
-      // Anywhere match:
-			where.WriteString("') > 0")
-			clauses = append(clauses, where.String())
-			where.Reset()
+	if filt != nil {
+		for k, v := range filt {
+			if len(v) > 0 {
+				where.WriteString("instr(lower(")
+				where.WriteString(k)
+				where.WriteString("),'")
+				where.WriteString(strings.ToLower(escape(v)))
+				// Initial substring match:
+				//where.WriteString("') = 1")
+				// Anywhere match:
+				where.WriteString("') > 0")
+				clauses = append(clauses, where.String())
+				where.Reset()
+			}
 		}
 	}
 
@@ -167,7 +174,7 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 		sql.WriteString(makelist(clauses, " and "))
 	}
 
-	if len(order) == 0 {
+	if order == nil || len(order) == 0 {
 		order = []string{"artist", "album", "title", "path"}
 	}
 

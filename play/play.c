@@ -80,12 +80,14 @@ int play_setvolume(unsigned char pct, char* alsa_card){
   }
   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0) {
     fprintf(stderr, "Mixer register error: %s\n", snd_strerror(err));
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
   err = snd_mixer_load(handle);
   if (err < 0) {
     fprintf(stderr, "Mixer %s load error: %s\n", alsa_card, snd_strerror(err));
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
@@ -102,34 +104,40 @@ int play_setvolume(unsigned char pct, char* alsa_card){
 
   if (!found_master){
     fprintf(stderr, "The 'Master' control was not found.\n");
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return -1;
   }
 
-  printf("Simple mixer control '%s',%i\n", snd_mixer_selem_id_get_name(sid), snd_mixer_selem_id_get_index(sid));
   if (snd_mixer_selem_has_playback_volume(elem)) {
     if ((err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max)) < 0){
       fprintf(stderr, "Mixer playback range error: %s\n", alsa_card, snd_strerror(err));
+      snd_mixer_detach(handle, alsa_card);
       snd_mixer_close(handle);
       return err;
     }
-    printf(" playback volume range: %d-%d\n", min, max);
   }
 
   val = (((long) pct)*(max-min)/100L);
-  printf("setting playback volume to %d\n", val);
   if ((err = snd_mixer_selem_set_playback_volume_all(elem, val)) < 0){
     fprintf(stderr, "Mixer set playback volume error: %s\n", alsa_card, snd_strerror(err));
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
-
+    
+  snd_mixer_detach(handle, alsa_card);
   snd_mixer_close(handle);
 
   return 0;
 }
 
-unsigned char play_getvolume(){
+/* 
+  Adapted from amixer source code.
+  This function gets the volume of the default output device as a percentage between 0 and 100.
+  On error a negative value is returned.
+*/
+char play_getvolume(){
   int err;
   snd_mixer_t *handle;
   snd_mixer_selem_id_t *sid;
@@ -150,12 +158,14 @@ unsigned char play_getvolume(){
   }
   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0) {
     fprintf(stderr, "Mixer register error: %s\n", snd_strerror(err));
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
   err = snd_mixer_load(handle);
   if (err < 0) {
     fprintf(stderr, "Mixer %s load error: %s\n", alsa_card, snd_strerror(err));
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
@@ -172,14 +182,15 @@ unsigned char play_getvolume(){
 
   if (!found_master){
     fprintf(stderr, "The 'Master' control was not found.\n");
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return -1;
   }
 
-  printf("Simple mixer control '%s',%i\n", snd_mixer_selem_id_get_name(sid), snd_mixer_selem_id_get_index(sid));
   if (snd_mixer_selem_has_playback_volume(elem)) {
     if ((err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max)) < 0){
       fprintf(stderr, "Mixer %s playback range error: %s\n", alsa_card, snd_strerror(err));
+      snd_mixer_detach(handle, alsa_card);
       snd_mixer_close(handle);
       return err;
     }
@@ -192,18 +203,22 @@ unsigned char play_getvolume(){
     }
     if (chan == SND_MIXER_SCHN_LAST){
       fprintf(stderr, "No available channel found\n");
+      snd_mixer_detach(handle, alsa_card);
       snd_mixer_close(handle);
       return err;
     }
 
-    printf(" playback volume range: %d-%d\n", min, max);
   }
 
   if ((err = snd_mixer_selem_get_playback_volume(elem, chan, &val)) < 0){
     fprintf(stderr, "Mixer %s get playback volume error: %s\n", alsa_card, snd_strerror(err));
+    snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
+
+  snd_mixer_detach(handle, alsa_card);
+  snd_mixer_close(handle);
 
   val = val*100L/(max-min);
 
