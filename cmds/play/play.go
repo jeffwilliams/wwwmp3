@@ -45,8 +45,7 @@ func main() {
 
 	//size, err := player.Load(os.Args[1], nil)
 
-	offchan := make(chan int)
-	size, err := player.Load(os.Args[1], offchan)
+	size, err := player.Load(os.Args[1])
 	if err != nil {
 		fmt.Println("Loading mp3 failed:", err)
 		return
@@ -85,8 +84,6 @@ func main() {
 					playing = true
 				}
 			}
-		case i := <-offchan:
-			fmt.Printf("offset %d/%d\n", i, size)
 		}
 
 	}
