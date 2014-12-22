@@ -128,7 +128,7 @@ func makelist(a []string, sep string) string {
 
 // Escape the ticks (') in the string
 func escape(s string) string {
-  return strings.Replace(s, "'", "''", -1)
+	return strings.Replace(s, "'", "''", -1)
 }
 
 // FindMp3sInDb passes mp3 metainformation to channel `ch` for all mp3s matching the specified criteria.

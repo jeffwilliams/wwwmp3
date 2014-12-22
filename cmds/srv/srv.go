@@ -5,44 +5,46 @@ package main
 
 import (
 	//"code.google.com/p/go.net/websocket"
-	"github.com/gorilla/websocket"
 	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/gorilla/websocket"
+	"github.com/jeffwilliams/go-logging"
 	"github.com/jeffwilliams/wwwmp3/play"
 	"github.com/jeffwilliams/wwwmp3/scan"
+	"github.com/jeffwilliams/wwwmp3/tee"
 	_ "github.com/mattn/go-sqlite3"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-  "github.com/jeffwilliams/go-logging"
-  "github.com/jeffwilliams/wwwmp3/tee"
 )
 
 var (
-  helpFlag = flag.Bool("help", false, "Print help")
-  dbflag = flag.String("db", "mp3.db", "database containing mp3 info")
-  allVolFlag = flag.Bool("allvol", false, "If set to true, changing the volume affects all ALSA cards, not just the default.")
-  db scan.Mp3Db
+	helpFlag   = flag.Bool("help", false, "Print help")
+	dbflag     = flag.String("db", "mp3.db", "database containing mp3 info")
+	allVolFlag = flag.Bool("allvol", false, "If set to true, changing the volume affects all ALSA cards, not just the default.")
+	db         scan.Mp3Db
 
-  // The mp3 player
-  player play.Player = play.NewPlayer()
+	// The mp3 player
+	player play.Player = play.NewPlayer()
 
-  // Metadata for the currently playing mp3
-  meta map[string]string
+	// Metadata for the currently playing mp3
+	meta     map[string]string
+	metaLock sync.Mutex
 
-  // When the metadata is changed a bool is written to this Tee.
-  metaChangedTee = tee.New()
+	// When the metadata is changed a bool is written to this Tee.
+	metaChangedTee = tee.New()
 
-  upgrader websocket.Upgrader
+	upgrader websocket.Upgrader
 
-  // Player events are written to this Tee
-  eventTee = tee.New()
+	// Player events are written to this Tee
+	eventTee = tee.New()
 
-  log = logging.MustGetLogger("server")
+	log = logging.MustGetLogger("server")
 )
 
 func queryVal(r *http.Request, key string) (rs string) {
@@ -173,7 +175,7 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 		// Play:
 		//  play=play
 		if v := queryVal(r, "load"); len(v) > 0 {
-	    log.Notice("servePlayer: load %s", v)
+			log.Notice("servePlayer: load %s", v)
 			size, err := player.Load(v)
 			if err != nil {
 				w.WriteHeader(500)
@@ -184,31 +186,35 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte("}"))
 			}
 			// Set the current mp3 metadata
+			metaLock.Lock()
 			meta = findMp3ByPath(v)
+			metaLock.Unlock()
 			if meta == nil {
 				fmt.Println("Loaded mp3, but can't find metainformation for it...")
 			} else {
-        metaChangedTee.In <- true
+				metaChangedTee.In <- true
 			}
 		} else if _, ok := r.URL.Query()["play"]; ok {
-      log.Notice("servePlayer: play")
+			log.Notice("servePlayer: play")
 			player.Play()
 		} else if _, ok := r.URL.Query()["pause"]; ok {
-      log.Notice("servePlayer: pause")
+			log.Notice("servePlayer: pause")
 			player.Pause()
 		} else if _, ok := r.URL.Query()["stop"]; ok {
-      log.Notice("servePlayer: stop")
+			log.Notice("servePlayer: stop")
 			player.Stop()
+			metaLock.Lock()
 			meta = nil
-      metaChangedTee.In <- true
+			metaLock.Unlock()
+			metaChangedTee.In <- true
 		} else if _, ok := r.URL.Query()["getvolume"]; ok {
 			v := play.GetVolume()
 			w.Write([]byte("{\"volume\": "))
 			w.Write([]byte(strconv.Itoa(int(v))))
 			w.Write([]byte("}"))
-      log.Notice("servePlayer: getvolume: returning %d", int(v))
+			log.Notice("servePlayer: getvolume: returning %d", int(v))
 		} else if s := queryVal(r, "setvolume"); len(s) > 0 {
-      log.Notice("servePlayer: setvolume %s", s)
+			log.Notice("servePlayer: setvolume %s", s)
 			v, err := strconv.Atoi(s)
 			if err != nil {
 				w.WriteHeader(400)
@@ -221,7 +227,7 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else if s := queryVal(r, "seek"); len(s) > 0 {
-      log.Notice("servePlayer: seek %s", s)
+			log.Notice("servePlayer: seek %s", s)
 			v, err := strconv.Atoi(s)
 			if err != nil {
 				w.WriteHeader(400)
@@ -262,25 +268,25 @@ Meta may be null if there is no loaded mp3.
 */
 //func playerEvents(ws *websocket.Conn) {
 func serveWebsock(w http.ResponseWriter, r *http.Request) {
-  if r.Method != "GET" {
-    http.Error(w, "Method not allowed", 405)
-    return
-  }
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", 405)
+		return
+	}
 
-  userAgent := r.Header.Get("User-Agent")
+	userAgent := r.Header.Get("User-Agent")
 
-  ws, err := upgrader.Upgrade(w, r, nil)
-  if err != nil {
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
 		log.Error("Error upgrading connection to websock: %v", err)
 		return
-  }
+	}
 
 	log.Notice("Websocket connection from %s %v", ws.RemoteAddr(), userAgent)
 
-  write := func(payload []byte) error {
-    ws.SetWriteDeadline(time.Now().Add(10*time.Millisecond))
-    return ws.WriteMessage(websocket.TextMessage, payload)
-  }
+	write := func(payload []byte) error {
+		ws.SetWriteDeadline(time.Now().Add(10 * time.Millisecond))
+		return ws.WriteMessage(websocket.TextMessage, payload)
+	}
 
 	defer log.Notice("Websocket handler for %s exiting", ws.RemoteAddr())
 
@@ -303,9 +309,9 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	eventTee.Add(c)
 	defer eventTee.Del(c)
 
-  metaChanged := make(chan interface{})
-  metaChangedTee.Add(metaChanged)
-  defer metaChangedTee.Del(metaChanged)
+	metaChanged := make(chan interface{})
+	metaChangedTee.Add(metaChanged)
+	defer metaChangedTee.Del(metaChanged)
 
 	//ws.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
 
@@ -319,7 +325,7 @@ loop:
 				// Hopefully the next one works...
 				continue loop
 			}
-	    log.Notice("Writing status to websocket %v", ws.RemoteAddr())
+			log.Notice("Writing status to websocket %v", ws.RemoteAddr())
 			err = write(d)
 			if err != nil {
 				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
@@ -333,36 +339,25 @@ loop:
 				break loop
 			}
 
+			log.Info("Got player event %v", e.(play.Event).String())
 			// Write the player information relevant to the event to the browser
-      s := player.GetStatus()
-      if e.(play.Event) == play.StateChange && s.State == play.Playing {
-        // If we just changed to Paused then we may have loaded a new song, so send all the information.
-	      d, err = jsonFullStatus(s, meta)
-      } else {
-        d, err = jsonPlayerEvent(s, e.(play.Event))
-      }
-
-      /*
-      if e.(play.Event) == play.StateChange && s.State == play.Empty {
-        // Track stopped.
-        // TODO: This variable is accessed by multiple goroutines; should be protected.
-        // TODO: Also, this should be set to nil outside of the websocket handler, so in case
-        // there are no browsers when the track stops, we would still set metainfo to nil.
-        // TODO: Deadlock here: we write to Tee, but Tee is writing to us.
-        meta = nil
-        metaChangedTee.In <- true
-      }
-      */
+			s := player.GetStatus()
+			if e.(play.Event) == play.StateChange && s.State == play.Paused {
+				// If we just changed to Paused then we may have loaded a new song, so send all the information.
+				d, err = jsonFullStatus(s, meta)
+			} else {
+				d, err = jsonPlayerEvent(s, e.(play.Event))
+			}
 
 			if err != nil {
 				log.Error("Error encoding Player event as JSON: %v", err)
 				// Hopefully the next one works...
 				continue loop
 			}
-	    log.Notice("Writing status to websocket %v", ws.RemoteAddr())
+			log.Notice("Writing status to websocket %v", ws.RemoteAddr())
 			err = write(d)
 			if err != nil {
-				log.Error("Error writing to websocket %v", ws.RemoteAddr(), ":", err)
+				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
 				// Client is probably gone. Close our channel and exit.
 				break loop
 			}
@@ -384,11 +379,11 @@ func openDb(path string) (mp3db scan.Mp3Db, err error) {
 	return
 }
 
-func initLogging(){
-  var format = logging.MustStringFormatter(
-    "%{color}%{time:2006-01-02 15:04:05.000000} %{module}: %{level:.4s} %{color:reset} %{message}",
-  )
-  logging.SetFormatter(format)
+func initLogging() {
+	var format = logging.MustStringFormatter(
+		"%{color}%{time:2006-01-02 15:04:05.000000} %{module}: %{level:.4s} %{color:reset} %{message}",
+	)
+	logging.SetFormatter(format)
 }
 
 func main() {
@@ -399,7 +394,7 @@ func main() {
 		os.Exit(0)
 	}
 
-  initLogging()
+	initLogging()
 
 	var err error
 
@@ -411,10 +406,22 @@ func main() {
 	}
 	defer db.Close()
 
-	// Read events from the player and pass them to the tee
+	// Read events from the player and pass them to the tee.
+	// Also detect metadata changes and write to metaChangedTee if a change is detected.
 	go func() {
 		for e := range player.Events {
 			eventTee.In <- e
+
+			if e == play.StateChange {
+				s := player.GetStatus()
+				if s.State == play.Empty {
+					// Track stopped.
+					metaLock.Lock()
+					meta = nil
+					metaLock.Unlock()
+					metaChangedTee.In <- true
+				}
+			}
 		}
 	}()
 

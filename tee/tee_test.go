@@ -3,8 +3,8 @@ package tee
 import "testing"
 
 func TestEmpty(*testing.T) {
-  // Tests two things: writing to an empty Tee doesn't block, and deleting from an empty Tee doesn't block.
-  // This test passes if this function returns.
+	// Tests two things: writing to an empty Tee doesn't block, and deleting from an empty Tee doesn't block.
+	// This test passes if this function returns.
 	tee := New()
 
 	tee.In <- "test"
@@ -109,22 +109,22 @@ func TestDelete(test *testing.T) {
 }
 
 func TestDeleteDeadlock(*testing.T) {
-  // Validate there is no deadlock on delete. 
-  // The possible deadlock is the following. If the Tee goroutine is trying to send 
-  // to an output channel, but the goroutine that would read that channel is trying to 
-  // delete the channel (and so is sending to the Tee goroutine) then the goroutines would 
-  // deadlock since each is waiting for the other to read.
-  //
-  // If this test function returns, then the test passes.
+	// Validate there is no deadlock on delete.
+	// The possible deadlock is the following. If the Tee goroutine is trying to send
+	// to an output channel, but the goroutine that would read that channel is trying to
+	// delete the channel (and so is sending to the Tee goroutine) then the goroutines would
+	// deadlock since each is waiting for the other to read.
+	//
+	// If this test function returns, then the test passes.
 
-  tee := New()
+	tee := New()
 
-  c := make(chan interface{})
+	c := make(chan interface{})
 
-  tee.Add(c)
+	tee.Add(c)
 
-  go func(){ tee.In <- "blort" }()
+	go func() { tee.In <- "blort" }()
 
-  tee.Del(c)
+	tee.Del(c)
 
 }

@@ -12,11 +12,11 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 	"unsafe"
-	"reflect"
 )
 
 // For development
@@ -50,13 +50,13 @@ func SetVolumeAll(pct byte) {
 
 // Get the volume as a percentage between 0 and 100 inclusive.
 func GetVolume() byte {
-  v := int8(C.play_getvolume())
-  if v >= 0 {
-    return byte(v)
-  } else {
-    // Error occurred. Return 0.
-    return 0
-  }
+	v := int8(C.play_getvolume())
+	if v >= 0 {
+		return byte(v)
+	} else {
+		// Error occurred. Return 0.
+		return 0
+	}
 }
 
 // Metadata is information about an mp3.
@@ -146,6 +146,19 @@ const (
 	VolumeChange
 )
 
+func (e Event) String() string {
+	switch e {
+	case OffsetChange:
+		return "OffsetChange"
+	case StateChange:
+		return "StateChange"
+	case VolumeChange:
+		return "VolumeChange"
+	default:
+		return "Unknown"
+	}
+}
+
 // PlayerStatus contains information about the current status of the player
 type PlayerStatus struct {
 	// Offset is the offset within the current track in samples
@@ -174,11 +187,11 @@ func NewPlayer() (p Player) {
 		var state PlayerState = Empty
 		var states [3]func()
 
-    debugCmd := func(cmd interface{}) {
-      if debug {
-        fmt.Printf("player: In state %s, got command %s\n", state, reflect.TypeOf(cmd) )
-      }
-    }
+		debugCmd := func(cmd interface{}) {
+			if debug {
+				fmt.Printf("player: In state %s, got command %s\n", state, reflect.TypeOf(cmd))
+			}
+		}
 
 		makeWriter := func() error {
 			if reader == nil {
@@ -198,16 +211,16 @@ func NewPlayer() (p Player) {
 			}
 		}
 
-    sendEvent := func(e Event){
-      // Do not block when sending events. We buffer some and then drop the rest. 
-      // This is to prevent deadlocks: users of the client need to read events, but
-      // they also send commands to the player. If the player is sending an event
-      // while the event reader is sending a command to the player we have a deadlock.
-      select{
-      case p.Events <- e:
-      default:
-      }
-    }
+		sendEvent := func(e Event) {
+			// Do not block when sending events. We buffer some and then drop the rest.
+			// This is to prevent deadlocks: users of the client need to read events, but
+			// they also send commands to the player. If the player is sending an event
+			// while the event reader is sending a command to the player we have a deadlock.
+			select {
+			case p.Events <- e:
+			default:
+			}
+		}
 
 		// Stop the currently playing mp3 if it's playing, and unload it.
 		stop := func() {
@@ -291,7 +304,7 @@ func NewPlayer() (p Player) {
 			var zero time.Time
 			lastofftime = zero
 
-		  sendEvent(OffsetChange)
+			sendEvent(OffsetChange)
 		}
 
 		handleCommonCmds := func(cmd interface{}) bool {
@@ -299,13 +312,19 @@ func NewPlayer() (p Player) {
 			case setVolumeCmd:
 				SetVolume(byte(cmd.(setVolumeCmd)))
 				sendEvent(VolumeChange)
+				if debug {
+					fmt.Println("player: sending VolumeChange event")
+				}
 				return true
 			case setVolumeAllCmd:
 				SetVolumeAll(byte(cmd.(setVolumeAllCmd)))
 				sendEvent(VolumeChange)
+				if debug {
+					fmt.Println("player: sending VolumeChange event")
+				}
 				return true
 			case getStatusCmd:
-        timer := time.Now()
+				timer := time.Now()
 				offset := 0
 				size := 0
 				if state != Empty {
@@ -313,9 +332,9 @@ func NewPlayer() (p Player) {
 					size = int(C.play_length(reader))
 				}
 				cmd.(getStatusCmd) <- PlayerStatus{Offset: offset, Size: size, State: state, Volume: GetVolume()}
-        if debug {
-          fmt.Printf("player: Generating status took %v\n", time.Now().Sub(timer))
-        }
+				if debug {
+					fmt.Printf("player: Generating status took %v\n", time.Now().Sub(timer))
+				}
 				return true
 			}
 			return false
@@ -326,7 +345,7 @@ func NewPlayer() (p Player) {
 			for {
 				select {
 				case cmd := <-p.cmds:
-          debugCmd(cmd)
+					debugCmd(cmd)
 					if handleCommonCmds(cmd) {
 						break
 					}
@@ -347,7 +366,7 @@ func NewPlayer() (p Player) {
 			for {
 				select {
 				case cmd := <-p.cmds:
-          debugCmd(cmd)
+					debugCmd(cmd)
 					if handleCommonCmds(cmd) {
 						break
 					}
@@ -371,41 +390,42 @@ func NewPlayer() (p Player) {
 		}
 
 		states[Playing] = func() {
-			outer: for {
-        // Handle all commands before copying song frames since copying is slow.
-        wasCmd := true
-        for {
-          select {
-          case cmd := <-p.cmds:
-            debugCmd(cmd)
-            if handleCommonCmds(cmd) {
-              break
-            }
+		outer:
+			for {
+				// Handle all commands before copying song frames since copying is slow.
+				wasCmd := true
+				for {
+					select {
+					case cmd := <-p.cmds:
+						debugCmd(cmd)
+						if handleCommonCmds(cmd) {
+							break
+						}
 
-            switch cmd.(type) {
-            case loadCmd:
-              load(cmd.(loadCmd))
-            case pauseCmd:
-              pause()
-            case stopCmd:
-              stop()
-            case seekCmd:
-              seek(cmd.(seekCmd))
-            }
-          default:
-            wasCmd = false
-          }
+						switch cmd.(type) {
+						case loadCmd:
+							load(cmd.(loadCmd))
+						case pauseCmd:
+							pause()
+						case stopCmd:
+							stop()
+						case seekCmd:
+							seek(cmd.(seekCmd))
+						}
+					default:
+						wasCmd = false
+					}
 
-          if state != Playing {
-            break outer
-          }
+					if state != Playing {
+						break outer
+					}
 
-          if ! wasCmd {
-            break
-          }
-        }
+					if !wasCmd {
+						break
+					}
+				}
 
-        timer := time.Now()
+				timer := time.Now()
 
 				// Copy a buffer of data to the output device
 				n, err := C.play_read(reader)
@@ -417,17 +437,17 @@ func NewPlayer() (p Player) {
 
 				C.play_write(writer, reader.buffer, n)
 
-        if debug {
-          fmt.Printf("player: copying a buffer of data took %v\n", time.Now().Sub(timer))
-        }
+				if debug {
+					fmt.Printf("player: copying a buffer of data took %v\n", time.Now().Sub(timer))
+				}
 
 				if lastofftime.IsZero() || time.Now().Sub(lastofftime) > time.Millisecond*250 {
 					if o := int(C.play_offset(reader)); o != lastoff {
-            timer = time.Now()
-				    sendEvent(OffsetChange)
-            if debug {
-              fmt.Printf("player: sending offsetchange event took %v\n", time.Now().Sub(timer))
-            }
+						timer = time.Now()
+						sendEvent(OffsetChange)
+						if debug {
+							fmt.Printf("player: sending offsetchange event took %v\n", time.Now().Sub(timer))
+						}
 					}
 				}
 			}
@@ -435,10 +455,10 @@ func NewPlayer() (p Player) {
 
 		// Player state machine:
 		for {
-      if debug {
-        fmt.Println("player: Entering state", state)
-      }
-		  lastState := state
+			if debug {
+				fmt.Println("player: Entering state", state)
+			}
+			lastState := state
 			states[state]()
 			if lastState != state {
 				sendEvent(StateChange)

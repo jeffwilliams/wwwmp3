@@ -25,6 +25,37 @@ function matchCriteria(crit, s) {
 }
 
 /*
+* This class attempts to prevent an operation from being performed too often.
+* Callers should call send() to perform the operation, but send will only occur
+* as often as the delay period.
+*/
+function Throttler($timeout, delay, set){
+
+  this.$timeout = $timeout;
+
+  // Function to call to set the value
+  this.set = set;
+
+  this.delay = delay;
+
+  this.timer = null;
+
+  this.send = function(){
+    if(this.timer){
+      // Cancel previous job
+      this.$timeout.cancel(this.timer);
+    }
+    
+    this.timer = this.$timeout(this.set, this.delay)
+    this.timer.finally(
+      function(){
+        this.timer = null;
+      }
+    );
+  }
+}
+
+/*
 Parameters: Pass a variable number of [property, criteria] pairs.
 This function returns a new function f. f takes one argument, a Mp3 structure,
 and returns true if Mp3 matches each of the [property, criteria] pairs. For each
@@ -253,10 +284,10 @@ function MainCtrl($scope, $http, $timeout){
       var e = angular.fromJson(event.data);
       if("Volume" in e) 
         handlePlayerVolumeEvent(e["Volume"])
-      if("Offset" in e) 
-        handlePlayerOffsetEvent(e["Offset"])
       if("Size" in e) 
         handlePlayerSizeEvent(e["Size"])
+      if("Offset" in e) 
+        handlePlayerOffsetEvent(e["Offset"])
       if("Meta" in e) 
         handlePlayerMetaEvent(e["Meta"])
       if("State" in e) 
@@ -482,13 +513,20 @@ function MainCtrl($scope, $http, $timeout){
       });
   }
 
+  var volumeThrottler = new Throttler($timeout, 80, 
+    function(){
+      $http.get("/player", {'params' : {"setvolume": $scope.volume}}).
+        success(function(data,status,headers,config){
+        }).
+        error(function(data,status,headers,config){
+          console.log("Error: setting volume failed: " + data);
+        });
+ 
+    }
+  );
+
   var playerSetVolume = function(){
-    $http.get("/player", {'params' : {"setvolume": $scope.volume}}).
-      success(function(data,status,headers,config){
-      }).
-      error(function(data,status,headers,config){
-        console.log("Error: setting volume failed: " + data);
-      });
+    volumeThrottler.send();
   }
 
   var playerSeek = function(){
