@@ -81,6 +81,7 @@
       }
 
     </style>
+    <title>MP3 Player</title>
   </head>
   <body>
     <div class="container" ng-controller="MainCtrl">
@@ -88,7 +89,7 @@
 
       <div class="row">
         <div id="playback_pos_container" class="col-xs-12">
-          <input id="playback_pos" type="range" min="0" max="{{maxPosition}}" ng-model="position" ng-mouseup="positionMouseup()"/>
+          <input id="playback_pos" type="range" min="0" max="{{maxPosition}}" ng-model="position" ng-change="positionMouseup()"/>
           <div class="vspace"></div>
         </div>
       </div>

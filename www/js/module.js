@@ -183,6 +183,7 @@ function MainCtrl($scope, $http, $timeout){
   // Position in the file
   $scope.position = 50;
   $scope.maxPosition = 100;
+  $scope.seekingToPosition = null;
 
   $scope.artists = []
   $scope.albums = []
@@ -213,7 +214,11 @@ function MainCtrl($scope, $http, $timeout){
 
   /**************** PLAYER EVENT HANDLING ******************/
   var handlePlayerOffsetEvent = function(position){
-    if($scope.position != position){
+    if($scope.seekingToPosition != null && $scope.seekingToPosition == position){
+      $scope.seekingToPosition = null;
+    }
+
+    if($scope.position != position && $scope.seekingToPosition == null){
       $timeout(function(){
         $scope.position = position;
       });
@@ -529,17 +534,30 @@ function MainCtrl($scope, $http, $timeout){
     volumeThrottler.send();
   }
 
-  var playerSeek = function(){
+  var sendPlayerSeekRequest = function(){
     var parms = {
       'seek': $scope.position
     }
+
+    // Mark that we are seeking to a specific position so that 
+    // we ignore any intermediate offset change events until we have 
+    // received an event with that position. This prevents the button from 
+    // jumping around.
+    $scope.seekingToPosition = $scope.position;
 
     $http.get("/player", {'params' : parms}).
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
         console.log("Error: seeking mp3 failed: " + data);
+        $scope.seekingToPosition = null;
       });
+  }
+
+  var seekThrottler = new Throttler($timeout, 80, sendPlayerSeekRequest);
+
+  var playerSeek = function(){
+    seekThrottler.send();
   }
   /**************** END PLAYER REQUESTS ******************/
   
