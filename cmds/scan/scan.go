@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/jeffwilliams/wwwmp3/play"
 	"github.com/jeffwilliams/wwwmp3/scan"
 	_ "github.com/mattn/go-sqlite3"
 	"os"
 )
 
 var dbflag = flag.String("db", "", "If set, store data in the mentioned database")
+var dump = flag.Bool("dump", false, "If set, print out all id3 information contained in the files")
 
 func openOrCreateDb(name string) (mp3db scan.Mp3Db, err error) {
 	_, err = os.Stat(name)
@@ -77,8 +79,14 @@ func main() {
 		go scan.ScanMp3s(flag.Arg(0), c)
 
 		for meta := range c {
-			fmt.Printf("    {artist: \"%s\", album: \"%s\", title: \"%s\", path: \"%s\"},\n",
-				meta.Artist, meta.Album, meta.Title, meta.Path)
+			if *dump {
+				fmt.Println("====", meta.Path)
+				play.DebugMetadata(meta.Path)
+				fmt.Println("")
+			} else {
+				fmt.Printf("    {artist: \"%s\", album: \"%s\", title: \"%s\", path: \"%s\"},\n",
+					meta.Artist, meta.Album, meta.Title, meta.Path)
+			}
 		}
 	} else {
 		c := make(chan int)

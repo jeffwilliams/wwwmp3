@@ -196,7 +196,11 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			}
 		} else if _, ok := r.URL.Query()["play"]; ok {
 			log.Notice("servePlayer: play")
-			player.Play()
+			err := player.Play()
+			if err != nil {
+				w.WriteHeader(500)
+				w.Write([]byte(err.Error()))
+			}
 		} else if _, ok := r.URL.Query()["pause"]; ok {
 			log.Notice("servePlayer: pause")
 			player.Pause()
