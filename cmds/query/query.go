@@ -19,7 +19,6 @@ var page = flag.Int("page", -1, "The page in results to return")
 var pageSize = flag.Int("pageSize", 10, "Size of a page")
 
 func output(db scan.Mp3Db, filt map[string]string) {
-	quit := make(chan bool)
 	ch := make(chan map[string]string)
 
 	var paging *scan.Paging
@@ -39,8 +38,7 @@ func output(db scan.Mp3Db, filt map[string]string) {
 		filt,
 		[]string{"artist", "album", "title"},
 		ch,
-		paging,
-		quit)
+		paging)
 
 	for meta := range ch {
 		if _, ok := meta["eof"]; ok {
@@ -57,24 +55,6 @@ func output(db scan.Mp3Db, filt map[string]string) {
 	}
 }
 
-/*
-func outputField(db scan.Mp3Db, c scan.Criteria, field scan.DbField) {
-  quit := make(chan bool)
-  ch := make(chan string)
-
-  go scan.FindMp3FieldInDb(db, c, field, ch, quit)
-
-  i := 0
-  for s := range(ch) {
-    fmt.Println(s)
-    i++
-    if *max >= 0 && i >= *max {
-      quit <- true
-      // On the next iteration the channel will be closed so the loop will exit
-    }
-  }
-}
-*/
 func main() {
 	flag.Parse()
 
@@ -110,21 +90,4 @@ func main() {
 
 	output(mp3db, c)
 
-	/*
-	   quit := make(chan bool)
-	   ch := make(chan scan.Metadata)
-
-	   go scan.FindMp3sInDb(db, c, ch, quit)
-
-	   i := 0
-	   for meta := range(ch) {
-	     fmt.Printf("    {artist: \"%s\", album: \"%s\", title: \"%s\", path: \"%s\"},\n",
-	       meta.Artist, meta.Album, meta.Title, meta.Path)
-	     i++
-	     if *max >= 0 && i >= *max {
-	       quit <- true
-	       // On the next iteration the channel will be closed so the loop will exit
-	     }
-	   }
-	*/
 }
