@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"github.com/jeffwilliams/wwwmp3/play"
+	"github.com/jeffwilliams/wwwmp3/scan"
 	"strconv"
 )
 
@@ -78,5 +79,13 @@ func jsonMeta(meta map[string]string) ([]byte, error) {
 	a := struct {
 		Meta map[string]string
 	}{Meta: meta}
+	return json.Marshal(a)
+}
+
+// jsonScan creates a JSON message with the current scan event's data
+func jsonScan(meta *scan.Metadata) ([]byte, error) {
+	a := struct {
+		Scan *scan.Metadata
+	}{Scan: meta}
 	return json.Marshal(a)
 }

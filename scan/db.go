@@ -14,6 +14,10 @@ type Mp3Db struct {
 
 	stmtAddMp3 *sql.Stmt
 
+	stmtUpdateMp3 *sql.Stmt
+
+	stmtPathExists *sql.Stmt
+
 	stmtGetMp3sOrderAlbum *sql.Stmt
 
 	stmtCleaners []func()
@@ -25,6 +29,18 @@ func (m *Mp3Db) prepare() (err error) {
 		return
 	}
 	m.stmtCleaners = append(m.stmtCleaners, func() { m.stmtAddMp3.Close() })
+
+	m.stmtUpdateMp3, err = m.DB.Prepare("update mp3 set artist = ?, album = ?, title = ? where path = ?")
+	if err != nil {
+		return
+	}
+	m.stmtCleaners = append(m.stmtCleaners, func() { m.stmtUpdateMp3.Close() })
+
+	m.stmtPathExists, err = m.DB.Prepare("select count(*) from mp3 where path = ?")
+	if err != nil {
+		return
+	}
+	m.stmtCleaners = append(m.stmtCleaners, func() { m.stmtPathExists.Close() })
 
 	return
 }
@@ -71,12 +87,8 @@ func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 }
 
 // ScanMp3sToDb scans a directory tree for mp3 files and updates `db` with the new mp3 information found.
-// If `prog` is not nil, it is passed the current number of files scanned every 100 files.
-func ScanMp3sToDb(basedir string, db Mp3Db, prog *chan int) {
-	if prog != nil {
-		defer close((*prog))
-	}
-
+// If `callback` is not nil, it is called each metadata.
+func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) {
 	c := make(chan Metadata)
 
 	go ScanMp3s(basedir, c)
@@ -86,14 +98,31 @@ func ScanMp3sToDb(basedir string, db Mp3Db, prog *chan int) {
 
 		//fmt.Println("Adding", m);
 
+		var cnt int
+		err := db.stmtPathExists.QueryRow(m.Path).Scan(&cnt)
+
+		if err != nil {
+			fmt.Println("ScanMp3sToDb: querying for existence failed:", err)
+			continue
+		}
+
 		tx, err := db.DB.Begin()
 		if err != nil {
 			fmt.Println("ScanMp3sToDb: creating transaction failed:", err)
 		}
-		stmt := tx.Stmt(db.stmtAddMp3)
+
+		var stmt *sql.Stmt
+		if cnt == 0 {
+			// No rows with that path.
+			stmt = tx.Stmt(db.stmtAddMp3)
+		} else {
+			// Row exists.
+			stmt = tx.Stmt(db.stmtUpdateMp3)
+		}
+
 		_, err = stmt.Exec(m.Artist, m.Album, m.Title, m.Path)
 		if err != nil {
-			fmt.Println("ScanMp3sToDb: inserting failed:", err)
+			fmt.Printf("ScanMp3sToDb: inserting or updating failed: %v\n", err)
 		}
 		err = tx.Commit()
 		if err != nil {
@@ -101,8 +130,8 @@ func ScanMp3sToDb(basedir string, db Mp3Db, prog *chan int) {
 		}
 
 		i++
-		if prog != nil && i%100 == 0 {
-			(*prog) <- i
+		if callback != nil {
+			callback(&m)
 		}
 	}
 }

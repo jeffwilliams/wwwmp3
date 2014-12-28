@@ -200,6 +200,8 @@ function MainCtrl($scope, $http, $timeout){
 
   $scope.playerEventsWebsock = null;
 
+  $scope.scannedMp3 = null;
+
   var fixSelection = function(items, selection, setter){
     if( items.length == 0 ) {
       if ( selection != "" ) {
@@ -209,6 +211,15 @@ function MainCtrl($scope, $http, $timeout){
       if( items.indexOf(selection) == -1 ){
         setter(items[0]);
       }
+    }
+  }
+
+  // Get a printable version of the last scanned mp3
+  $scope.scannedMp3ForDisplay = function() {
+    if(null == $scope.scannedMp3){
+      return "";
+    } else {
+      return $scope.scannedMp3.Title + " by " + $scope.scannedMp3.Artist;
     }
   }
 
@@ -249,6 +260,14 @@ function MainCtrl($scope, $http, $timeout){
   var handlePlayerMetaEvent = function(meta){
     $timeout(function(){
       $scope.playing = meta;
+    });
+  }
+
+  var handlePlayerScanEvent = function(meta){
+    console.log("Scan: got meta: ");
+    console.log(meta);
+    $timeout(function(){
+      $scope.scannedMp3 = meta;
     });
   }
 
@@ -295,6 +314,8 @@ function MainCtrl($scope, $http, $timeout){
         handlePlayerOffsetEvent(e["Offset"])
       if("Meta" in e) 
         handlePlayerMetaEvent(e["Meta"])
+      if("Scan" in e) 
+        handlePlayerScanEvent(e["Scan"])
       if("State" in e) 
         handlePlayerStateEvent(e["State"])
     }
@@ -559,6 +580,16 @@ function MainCtrl($scope, $http, $timeout){
   var playerSeek = function(){
     seekThrottler.send();
   }
+
+  $scope.scan = function(){
+    $http.get("/scan/start").
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: scanning request failed: " + data);
+      });
+  }
+
   /**************** END PLAYER REQUESTS ******************/
   
   // Initial data load

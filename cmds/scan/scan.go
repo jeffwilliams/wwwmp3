@@ -3,12 +3,16 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/jeffwilliams/wwwmp3/play"
 	"github.com/jeffwilliams/wwwmp3/scan"
 	_ "github.com/mattn/go-sqlite3"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 )
 
 var dbflag = flag.String("db", "", "If set, store data in the mentioned database")
@@ -45,6 +49,25 @@ func openOrCreateDb(name string) (mp3db scan.Mp3Db, err error) {
 	}
 
 	return
+}
+
+// ttyCols gets the number of columns in the terminal. This is horribly non-portable.
+func ttyCols() (int, error) {
+	cmd := exec.Command("stty", "size")
+	cmd.Stdin = os.Stdin
+	out, err := cmd.Output()
+	if err != nil {
+		return -1, err
+	}
+	parts := strings.Split(string(out), " ")
+	if len(parts) <= 1 {
+		return -1, errors.New("stty output has too few fields")
+	}
+	v, err := strconv.Atoi(strings.Trim(parts[1], " \n"))
+	if err != nil {
+		return -1, err
+	}
+	return v, nil
 }
 
 func main() {
@@ -89,11 +112,26 @@ func main() {
 			}
 		}
 	} else {
-		c := make(chan int)
-		go scan.ScanMp3sToDb(flag.Arg(0), db, &c)
-		for p := range c {
-			fmt.Println(p)
-		}
+		lastLen := 0
+		cols, err := ttyCols()
+
+		scan.ScanMp3sToDb(flag.Arg(0), db,
+			func(m *scan.Metadata) {
+				fmt.Printf("\r")
+				for i := 0; i < lastLen; i++ {
+					fmt.Printf(" ")
+				}
+				fmt.Printf("\r")
+				msg := m.Path
+				runes := []rune(msg)
+				if err == nil && len(runes) > cols {
+					// Take first `cols` characters
+					msg = string(runes[:cols])
+				}
+				fmt.Printf(msg)
+				os.Stdout.Sync()
+				lastLen = len(runes)
+			})
 	}
 
 }

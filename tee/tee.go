@@ -1,3 +1,4 @@
+// Package tee implements a channel tee: items written to an input channel are multiplexed to registered output channels.
 package tee
 
 // Tee implements a channel tee: items written on In are written to all registered out channels.
