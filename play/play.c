@@ -362,6 +362,23 @@ int play_offset(play_reader_t* reader) {
 }
 
 /*
+Get information about a loaded mp3.
+This function sets errno to 0 on success, and -1 on error (for use with CGOs multiple assignment)
+*/
+struct mpg123_frameinfo play_getinfo(play_reader_t* reader) {
+  struct mpg123_frameinfo rc;
+  int err;
+
+  err = mpg123_info(reader->mh, &rc);
+  if (err == MPG123_OK) {
+    errno = 0;
+  } else {
+    errno = -1;
+  }
+  return rc;
+}
+
+/*
 Seek.
 */
 void play_seek(play_reader_t* reader, int offset) {

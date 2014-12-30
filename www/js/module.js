@@ -260,6 +260,10 @@ function MainCtrl($scope, $http, $timeout){
   var handlePlayerMetaEvent = function(meta){
     $timeout(function(){
       $scope.playing = meta;
+      if (meta && "rate" in meta) {
+        // Convert to khz
+        $scope.playing.rate = $scope.playing.rate/1000 + "khz"
+      }
     });
   }
 

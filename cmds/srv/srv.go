@@ -202,6 +202,8 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(strconv.Itoa(size)))
 				w.Write([]byte("}"))
 			}
+
+			changed := false
 			// Set the current mp3 metadata
 			metaLock.Lock()
 			meta = findMp3ByPath(v)
@@ -209,8 +211,21 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			if meta == nil {
 				fmt.Println("Loaded mp3, but can't find metainformation for it...")
 			} else {
+				changed = true
+			}
+			// Set the current mp3 info into the metadata
+			info := player.GetInfo()
+			if info != nil {
+				meta["bitrate"] = strconv.Itoa(info.BitRate)
+				meta["rate"] = strconv.Itoa(info.Rate)
+				changed = true
+			} else {
+				fmt.Println("Getting loaded mp3 info (like bitrate) failed")
+			}
+			if changed {
 				metaChangedTee.In <- true
 			}
+
 		} else if _, ok := r.URL.Query()["play"]; ok {
 			log.Notice("servePlayer: play")
 			err := player.Play()

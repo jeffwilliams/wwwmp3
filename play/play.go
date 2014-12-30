@@ -59,11 +59,20 @@ func GetVolume() byte {
 	}
 }
 
-// Metadata is information about an mp3.
+// Metadata is information about an mp3 stored in id3 tags.
 type Metadata struct {
 	Title  string
 	Artist string
 	Album  string
+}
+
+// Information about an mp3 determined once the mp3 is loaded.
+type Info struct {
+	// The bitrate of the mp3, in kbps
+	BitRate int
+
+	// Sampling rate in Hz
+	Rate int
 }
 
 // GetMetadata extracts the id3 information from the mp3 file `filename`.
@@ -114,7 +123,7 @@ type Player struct {
 	Events chan Event
 }
 
-// Internal commands used by the Player:
+// Internal command used by the Player
 type loadCmd struct {
 	path string
 	err  chan error
@@ -122,10 +131,13 @@ type loadCmd struct {
 	size chan int
 }
 
+// Internal command used by the Player
 type playCmd chan error
 
+// Internal command used by the Player
 type pauseCmd bool
 
+// Internal command used by the Player
 type stopCmd bool
 
 // The offset to seek to
@@ -133,9 +145,15 @@ type seekCmd int
 
 // The percentage to set to
 type setVolumeCmd byte
+
+// Internal command used by the Player
 type setVolumeAllCmd byte
 
+// Internal command used by the Player
 type getStatusCmd chan PlayerStatus
+
+// Internal command used by the Player
+type getInfoCmd chan *Info
 
 // Event represents events sent by the Player.
 type Event int
@@ -336,6 +354,18 @@ func NewPlayer() (p Player) {
 					fmt.Printf("player: Generating status took %v\n", time.Now().Sub(timer))
 				}
 				return true
+			case getInfoCmd:
+				if state != Empty {
+					i, err := C.play_getinfo(reader)
+					if err != nil {
+						cmd.(getInfoCmd) <- nil
+					} else {
+						cmd.(getInfoCmd) <- &Info{BitRate: int(i.bitrate), Rate: int(i.rate)}
+					}
+				} else {
+					cmd.(getInfoCmd) <- nil
+				}
+				return true
 			}
 			return false
 		}
@@ -528,6 +558,14 @@ func (p Player) SetVolumeAll(pct byte) {
 func (p Player) GetStatus() PlayerStatus {
 	cmd := make(chan PlayerStatus)
 	p.cmds <- getStatusCmd(cmd)
+
+	return <-cmd
+}
+
+// GetInfo returns an Info object about the loaded mp3. If an mp3 is not loaded, nil is returned
+func (p Player) GetInfo() *Info {
+	cmd := make(chan *Info)
+	p.cmds <- getInfoCmd(cmd)
 
 	return <-cmd
 }
