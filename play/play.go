@@ -1,4 +1,6 @@
-// Package play implements a simple mp3 player.
+// Package play implements a simple mp3 player. In general, to use this package first create a Player using NewPlayer,
+// start a goroutine that listens for events on Player.Event, Load an mp3 using Player.Load, and play it using Player.Play().
+// GetMetadata can be used to retrieve ID3 information from mp3 files.
 package play
 
 /*
@@ -119,7 +121,9 @@ func (s PlayerState) String() string {
 
 // Player is an mp3 player.
 type Player struct {
-	cmds   chan interface{}
+	cmds chan interface{}
+	// Events is a channel to which Player events are written, such as state changes, volume changes, or offset changes.
+	// When an event is recieved the user should call GetStatus() to get the current player information.
 	Events chan Event
 }
 
