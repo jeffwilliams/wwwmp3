@@ -133,5 +133,7 @@ func main() {
 				lastLen = len(runes)
 			})
 	}
+  fmt.Printf("\r")
+  fmt.Printf("\n")
 
 }
