@@ -226,7 +226,7 @@ char play_getvolume(){
 }
 
 // Adapted from http://hzqtc.github.io/2012/05/play-mp3-with-libmpg123-and-libao.html
-// Play an mp3 from start to finish.
+// Play an mp3 from start to finish. For testing only; error checking is minimal.
 void play_play(char* filename){
   mpg123_handle *mh;
   unsigned char *buffer;
@@ -376,6 +376,36 @@ struct mpg123_frameinfo play_getinfo(play_reader_t* reader) {
     errno = -1;
   }
   return rc;
+}
+
+/* 
+Get the time in seconds per sample.
+This function sets errno to 0 on success, and -1 on error (for use with CGOs multiple assignment).
+*/
+double play_seconds_per_sample(play_reader_t* reader) {
+  int spf;
+  double d;
+
+  errno = 0;
+
+  if ( mpg123_scan(reader->mh) == MPG123_ERR) {
+    errno = -1;
+    return 0.0;
+  }
+  
+  spf = mpg123_spf(reader->mh);
+  if (spf <= 0) {
+    errno = -1;
+    return 0.0;
+  }
+  
+  d = mpg123_tpf(reader->mh);
+  if (d <= 0.0) {
+    errno = -1;
+    return 0.0;
+  }
+
+  return d / ((double) spf);
 }
 
 /*

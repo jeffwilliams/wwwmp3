@@ -218,6 +218,8 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			if info != nil {
 				meta["bitrate"] = strconv.Itoa(info.BitRate)
 				meta["rate"] = strconv.Itoa(info.Rate)
+				meta["duration"] = strconv.FormatFloat(info.Duration, 'f', -1, 64)
+				meta["sec_per_sample"] = strconv.FormatFloat(info.Sps, 'f', -1, 64)
 				changed = true
 			} else {
 				fmt.Println("Getting loaded mp3 info (like bitrate) failed")

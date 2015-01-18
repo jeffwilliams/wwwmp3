@@ -24,6 +24,39 @@ function matchCriteria(crit, s) {
   return crit == "" || s.toLowerCase().indexOf(crit) > -1;
 }
 
+// Convert a number of seconds to a time format string
+function secondsToTime(secs) {
+  var s = Math.round(secs % 60.0);
+  var m = Math.floor(secs / 60.0);
+  var h = null;
+
+  if(m > 60) {
+    m = m % 60.0;
+    h = Math.floor(m / 60.0);
+  }
+  
+  // Convert to two-digit strings
+  var result = "";
+  if(s < 10) {
+    s = "0" + s;
+  }
+  result += s;
+
+  if (m < 10) {
+    m = "0" + m;
+  }
+  result = m + ":" + result
+
+  if (h){
+    if (h < 10) {
+      h = "0" + h;
+    }
+    result = h + ":" + result
+  }
+
+  return result;
+}
+
 /*
 * This class attempts to prevent an operation from being performed too often.
 * Callers should call send() to perform the operation, but send will only occur
@@ -184,6 +217,7 @@ function MainCtrl($scope, $http, $timeout){
   $scope.position = 50;
   $scope.maxPosition = 100;
   $scope.seekingToPosition = null;
+  $scope.seekedAt = null;
 
   $scope.artists = []
   $scope.albums = []
@@ -225,7 +259,9 @@ function MainCtrl($scope, $http, $timeout){
 
   /**************** PLAYER EVENT HANDLING ******************/
   var handlePlayerOffsetEvent = function(position){
-    if($scope.seekingToPosition != null && $scope.seekingToPosition == position){
+    var now = (new Date()).getTime();
+    if($scope.seekingToPosition != null && ($scope.seekingToPosition == position || $scope.seekedAt <= (now - 1000))){
+      $scope.seekedAt = null;
       $scope.seekingToPosition = null;
     }
 
@@ -260,9 +296,12 @@ function MainCtrl($scope, $http, $timeout){
   var handlePlayerMetaEvent = function(meta){
     $timeout(function(){
       $scope.playing = meta;
-      if (meta && "rate" in meta) {
+      if (meta && ("rate" in meta)) {
         // Convert to khz
         $scope.playing.rate = $scope.playing.rate/1000 + "khz"
+      }
+      if (meta && ("duration" in meta)) {
+        $scope.playing.duration = secondsToTime($scope.playing.duration)
       }
     });
   }
@@ -569,6 +608,7 @@ function MainCtrl($scope, $http, $timeout){
     // received an event with that position. This prevents the button from 
     // jumping around.
     $scope.seekingToPosition = $scope.position;
+    $scope.seekedAt = (new Date()).getTime();
 
     $http.get("/player", {'params' : parms}).
       success(function(data,status,headers,config){
@@ -681,7 +721,7 @@ function MainCtrl($scope, $http, $timeout){
     if($scope.playing){
       return $scope.playing[prop];
     } else {
-      return "-";
+      return "" //"-";
     }
   }
 
@@ -712,6 +752,14 @@ function MainCtrl($scope, $http, $timeout){
       } else {
         playerPlayMp3();
       }
+    }
+  }
+
+  $scope.timePosition = function() {
+    if( $scope.playing && $scope.playing.sec_per_sample ) {
+      return secondsToTime($scope.position*$scope.playing.sec_per_sample)
+    } else {
+      return "";
     }
   }
 

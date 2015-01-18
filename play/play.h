@@ -30,6 +30,7 @@ int play_length(play_reader_t* reader);
 int play_offset(play_reader_t* reader);
 void play_seek(play_reader_t* reader, int offset);
 struct mpg123_frameinfo play_getinfo(play_reader_t* reader);
+double play_seconds_per_sample(play_reader_t* reader);
 
 ao_device* play_new_writer(play_reader_t* reader);
 void play_delete_writer(ao_device* writer);

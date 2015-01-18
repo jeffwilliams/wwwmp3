@@ -75,6 +75,12 @@ type Info struct {
 
 	// Sampling rate in Hz
 	Rate int
+
+	// Duration of mp3 in seconds (if available) or zero otherwise
+	Duration float64
+
+	// Seconds per sample (if available) or zero otherwise
+	Sps float64
 }
 
 // GetMetadata extracts the id3 information from the mp3 file `filename`.
@@ -363,9 +369,20 @@ func NewPlayer() (p Player) {
 					i, err := C.play_getinfo(reader)
 					if err != nil {
 						cmd.(getInfoCmd) <- nil
-					} else {
-						cmd.(getInfoCmd) <- &Info{BitRate: int(i.bitrate), Rate: int(i.rate)}
+						break
 					}
+
+					info := &Info{BitRate: int(i.bitrate), Rate: int(i.rate)}
+					d, err := C.play_seconds_per_sample(reader)
+					size := int(C.play_length(reader))
+					if err == nil {
+						info.Sps = float64(d)
+						if size > 0 {
+							info.Duration = float64(d) * float64(size)
+						}
+					}
+
+					cmd.(getInfoCmd) <- info
 				} else {
 					cmd.(getInfoCmd) <- nil
 				}
