@@ -165,16 +165,28 @@ type getStatusCmd chan PlayerStatus
 // Internal command used by the Player
 type getInfoCmd chan *Info
 
+type EventType int
+
 // Event represents events sent by the Player.
-type Event int
+type Event struct {
+	// Type is the type of event
+	Type EventType
+	// Data is the event data.
+	// For OffsetChange, it is an int representing the offset.
+	// For StateChange, it is a PlayerState.
+	// For VolumeChange, it is a byte in the range 0-100 representing the volume.
+	// For QueueChange, it is not set.
+	Data interface{}
+}
 
 const (
-	OffsetChange Event = iota
+	OffsetChange EventType = iota
 	StateChange
 	VolumeChange
+	QueueChange
 )
 
-func (e Event) String() string {
+func (e EventType) String() string {
 	switch e {
 	case OffsetChange:
 		return "OffsetChange"
@@ -182,6 +194,8 @@ func (e Event) String() string {
 		return "StateChange"
 	case VolumeChange:
 		return "VolumeChange"
+	case QueueChange:
+		return "QueueChange"
 	default:
 		return "Unknown"
 	}
@@ -197,6 +211,8 @@ type PlayerStatus struct {
 	State PlayerState
 	// Volume
 	Volume byte
+	// Path to current mp3
+	Path string
 }
 
 // Create a new Player.
@@ -207,6 +223,7 @@ func NewPlayer() (p Player) {
 
 	// This goroutine implements the player.
 	go func() {
+		var path string
 		var reader *C.play_reader_t
 		var writer *C.ao_device
 		var lastofftime time.Time
@@ -253,6 +270,7 @@ func NewPlayer() (p Player) {
 		// Stop the currently playing mp3 if it's playing, and unload it.
 		stop := func() {
 			if state != Empty {
+				path = ""
 				C.play_delete_reader(reader)
 				reader = nil
 				deleteWriter()
@@ -269,7 +287,8 @@ func NewPlayer() (p Player) {
 
 			lastoff = -1
 
-			reader = C.play_new_reader(C.CString(cmd.path))
+			path = cmd.path
+			reader = C.play_new_reader(C.CString(path))
 			if reader == nil {
 				close(cmd.size)
 				cmd.err <- errors.New("Creating reader failed")
@@ -332,21 +351,21 @@ func NewPlayer() (p Player) {
 			var zero time.Time
 			lastofftime = zero
 
-			sendEvent(OffsetChange)
+			sendEvent(Event{Type: OffsetChange, Data: int(cmd)})
 		}
 
 		handleCommonCmds := func(cmd interface{}) bool {
 			switch cmd.(type) {
 			case setVolumeCmd:
 				SetVolume(byte(cmd.(setVolumeCmd)))
-				sendEvent(VolumeChange)
+				sendEvent(Event{Type: VolumeChange, Data: byte(cmd.(setVolumeCmd))})
 				if debug {
 					fmt.Println("player: sending VolumeChange event")
 				}
 				return true
 			case setVolumeAllCmd:
 				SetVolumeAll(byte(cmd.(setVolumeAllCmd)))
-				sendEvent(VolumeChange)
+				sendEvent(Event{Type: VolumeChange, Data: byte(cmd.(setVolumeCmd))})
 				if debug {
 					fmt.Println("player: sending VolumeChange event")
 				}
@@ -359,7 +378,7 @@ func NewPlayer() (p Player) {
 					offset = int(C.play_offset(reader))
 					size = int(C.play_length(reader))
 				}
-				cmd.(getStatusCmd) <- PlayerStatus{Offset: offset, Size: size, State: state, Volume: GetVolume()}
+				cmd.(getStatusCmd) <- PlayerStatus{Offset: offset, Size: size, State: state, Volume: GetVolume(), Path: path}
 				if debug {
 					fmt.Printf("player: Generating status took %v\n", time.Now().Sub(timer))
 				}
@@ -495,7 +514,7 @@ func NewPlayer() (p Player) {
 				if lastofftime.IsZero() || time.Now().Sub(lastofftime) > time.Millisecond*250 {
 					if o := int(C.play_offset(reader)); o != lastoff {
 						timer = time.Now()
-						sendEvent(OffsetChange)
+						sendEvent(Event{Type: OffsetChange, Data: o})
 						if debug {
 							fmt.Printf("player: sending offsetchange event took %v\n", time.Now().Sub(timer))
 						}
@@ -512,7 +531,7 @@ func NewPlayer() (p Player) {
 			lastState := state
 			states[state]()
 			if lastState != state {
-				sendEvent(StateChange)
+				sendEvent(Event{Type: StateChange, Data: state})
 			}
 		}
 

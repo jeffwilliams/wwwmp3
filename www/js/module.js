@@ -324,12 +324,18 @@ function MainCtrl($scope, $http, $timeout){
       if(state == 0){
         $scope.state = null;
         $scope.playing = null;
-        $scope.playNext();
+        //$scope.playNext();
       } else if (state == 1 ){
         $scope.state = "playing";
       } else {
         $scope.state = "paused";
       }
+    });
+  }
+
+  var handlePlayerQueueChangeEvent = function(meta){
+    $timeout(function(){
+      $scope.playQueue = meta;
     });
   }
 
@@ -361,6 +367,8 @@ function MainCtrl($scope, $http, $timeout){
         handlePlayerScanEvent(e["Scan"])
       if("State" in e) 
         handlePlayerStateEvent(e["State"])
+      if("Queue" in e)
+        handlePlayerQueueChangeEvent(e["Queue"])
     }
 
     $scope.playerEventsWebsock.onopen = function(event){
@@ -546,6 +554,19 @@ function MainCtrl($scope, $http, $timeout){
       });
   }
 
+  var playerQueueMp3 = function(path){
+    var parms = {
+      'enqueue': path
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: enqueueing mp3 failed: " + data);
+      });
+  }
+
   var playerPauseMp3 = function(){
     var parms = {
       'pause': 'pause'
@@ -579,6 +600,48 @@ function MainCtrl($scope, $http, $timeout){
       }).
       error(function(data,status,headers,config){
         console.log("Error: getting volume failed: " + data);
+      });
+  }
+
+  var playerMoveInQueue = function(index, delta){
+    var parms = {
+      'queue.move': 'y',
+      'index': index,
+      'delta': delta
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: changing queue failed: " + data);
+      });
+  }
+
+  var playerRemoveFromQueue = function(index){
+    var parms = {
+      'queue.remove': 'y',
+      'index': index
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: changing queue failed: " + data);
+      });
+  }
+
+  var playerClearQueue = function(){
+    var parms = {
+      'queue.clear': 'y'
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: changing queue failed: " + data);
       });
   }
 
@@ -674,46 +737,23 @@ function MainCtrl($scope, $http, $timeout){
   $scope.addSelectedToPlayQueue = function() {
     if($scope.song){
       console.log("$scope.addSelectedToPlayQueue called. song title = " + $scope.song.title);
-      $scope.playQueue.push($scope.song);
+      playerQueueMp3($scope.song.path);
     }
 
-    $scope.playNext();
   }
 
-  $scope.removeFromPlayQueue = function(s) {
-    var i = $scope.playQueue.indexOf(s);
-    if( i >= 0 ){
-      $scope.playQueue.splice(i,1);
-    }
+  $scope.removeFromPlayQueue = function(index) {
+    playerRemoveFromQueue(index);
   }
 
   $scope.moveInPlayQueue = function(index,delta){
-    if (delta < 0 ) delta = -1;
-    if (delta > 0 ) delta = 1;
-
-    if (index < 1 && delta == -1 || index > $scope.playQueue.length-2 && delta == 1){
-      return;
-    }
-    
-    var t = $scope.playQueue[index+delta]
-    $scope.playQueue[index+delta] = $scope.playQueue[index];
-    $scope.playQueue[index] = t;
+    playerMoveInQueue(index, delta);
   }
 
-  $scope.clearPlayQueue = function(s) {
-    $scope.playQueue = [];
+  $scope.clearPlayQueue = function() {
+    playerClearQueue();
   }
 
-  $scope.playNext = function(){
-    if(! $scope.playing){
-      if($scope.playQueue.length > 0){
-        $scope.playing = $scope.playQueue.shift();
-        if ( $scope.playing ){
-          playerLoadMp3($scope.playing.path, playerPlayMp3);
-        }
-      }
-    }
-  }
   /**************** END PLAY QUEUE ******************/
 
 

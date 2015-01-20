@@ -14,7 +14,7 @@ import (
 	"github.com/jeffwilliams/wwwmp3/scan"
 	"github.com/jeffwilliams/wwwmp3/tee"
 	_ "github.com/mattn/go-sqlite3"
-	"io"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
@@ -35,13 +35,12 @@ var (
 
 	// The mp3 player
 	player play.Player = play.NewPlayer()
+	// The queue for the mp3 player.
+	queue play.Queue
 
 	// Metadata for the currently playing mp3
 	meta     map[string]string
 	metaLock sync.Mutex
-
-	// When the metadata is changed a bool is written to this Tee.
-	metaChangedTee = tee.New()
 
 	upgrader websocket.Upgrader
 
@@ -82,19 +81,6 @@ func serveMeta(w http.ResponseWriter, r *http.Request) {
 			l = strings.Split(s, ",")
 		}
 		return
-	}
-
-	writeMapAsJson := func(w io.Writer, m map[string]string) {
-		w.Write([]byte("  {"))
-		i := 0
-		for k, v := range m {
-			if i > 0 {
-				w.Write([]byte(", "))
-			}
-			w.Write([]byte(`"` + k + `": "` + strings.Replace(v, `"`, `\"`, -1) + `"`))
-			i++
-		}
-		w.Write([]byte("}"))
 	}
 
 	if r.Method == "GET" {
@@ -146,13 +132,15 @@ func serveMeta(w http.ResponseWriter, r *http.Request) {
 			ch,
 			&scan.Paging{PageSize: pageSize, Page: page})
 
+		enc := json.NewEncoder(w)
 		w.Write([]byte("[\n"))
 		j := 0
 		for m := range ch {
 			if j > 0 {
 				w.Write([]byte(",\n"))
 			}
-			writeMapAsJson(w, m)
+
+			enc.Encode(m)
 			j++
 		}
 		w.Write([]byte("\n]\n"))
@@ -183,6 +171,43 @@ func findMp3ByPath(path string) map[string]string {
 	return r
 }
 
+func setMetainfo() {
+	if meta == nil {
+		meta = make(map[string]string)
+	}
+
+	// Set the current mp3 info into the metadata struct
+	info := player.GetInfo()
+	if info != nil {
+		meta["bitrate"] = strconv.Itoa(info.BitRate)
+		meta["rate"] = strconv.Itoa(info.Rate)
+		meta["duration"] = strconv.FormatFloat(info.Duration, 'f', -1, 64)
+		meta["sec_per_sample"] = strconv.FormatFloat(info.Sps, 'f', -1, 64)
+	} else {
+		log.Error("Getting loaded mp3 info (like bitrate) failed")
+	}
+}
+
+// listQueue returns a slice containing the metainfo of the tracks in the play queue.
+// The metainfo entries are typed as maps of names to values.
+func listQueue(queue play.Queue) (result []map[string]string) {
+	result = make([]map[string]string, 0)
+
+	for _, path := range queue.List() {
+		m := findMp3ByPath(path)
+		if m == nil {
+			m = map[string]string{
+				"artist": "?",
+				"album":  "?",
+				"title":  "?",
+				"path":   path,
+			}
+		}
+		result = append(result, m)
+	}
+	return
+}
+
 // Perform functions on the mp3 player like play and pause.
 func servePlayer(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
@@ -191,43 +216,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 		//  load=<path>
 		// Play:
 		//  play=play
-		if v := queryVal(r, "load"); len(v) > 0 {
-			log.Notice("servePlayer: load %s", v)
-			size, err := player.Load(v)
-			if err != nil {
-				w.WriteHeader(500)
-				w.Write([]byte(err.Error()))
-			} else {
-				w.Write([]byte("{\"size\": "))
-				w.Write([]byte(strconv.Itoa(size)))
-				w.Write([]byte("}"))
-			}
-
-			changed := false
-			// Set the current mp3 metadata
-			metaLock.Lock()
-			meta = findMp3ByPath(v)
-			metaLock.Unlock()
-			if meta == nil {
-				fmt.Println("Loaded mp3, but can't find metainformation for it...")
-			} else {
-				changed = true
-			}
-			// Set the current mp3 info into the metadata
-			info := player.GetInfo()
-			if info != nil {
-				meta["bitrate"] = strconv.Itoa(info.BitRate)
-				meta["rate"] = strconv.Itoa(info.Rate)
-				meta["duration"] = strconv.FormatFloat(info.Duration, 'f', -1, 64)
-				meta["sec_per_sample"] = strconv.FormatFloat(info.Sps, 'f', -1, 64)
-				changed = true
-			} else {
-				fmt.Println("Getting loaded mp3 info (like bitrate) failed")
-			}
-			if changed {
-				metaChangedTee.In <- true
-			}
-
+		if v := queryVal(r, "enqueue"); len(v) > 0 {
+			log.Notice("servePlayer: enqueue")
+			queue.Enqueue(v)
 		} else if _, ok := r.URL.Query()["play"]; ok {
 			log.Notice("servePlayer: play")
 			err := player.Play()
@@ -241,10 +232,6 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 		} else if _, ok := r.URL.Query()["stop"]; ok {
 			log.Notice("servePlayer: stop")
 			player.Stop()
-			metaLock.Lock()
-			meta = nil
-			metaLock.Unlock()
-			metaChangedTee.In <- true
 		} else if _, ok := r.URL.Query()["getvolume"]; ok {
 			v := play.GetVolume()
 			w.Write([]byte("{\"volume\": "))
@@ -274,7 +261,50 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				player.Seek(v)
 			}
 
+		} else if _, ok := r.URL.Query()["queue.list"]; ok {
+			enc := json.NewEncoder(w)
+			enc.Encode(listQueue(queue))
+		} else if _, ok := r.URL.Query()["queue.move"]; ok {
+			s := queryVal(r, "index")
+			if len(s) == 0 {
+				log.Warning("servePlayer: queue.move: request contained no 'index'")
+				return
+			}
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				log.Warning("servePlayer: queue.move: index was not an integer: %v", err)
+				return
+			}
+
+			s = queryVal(r, "delta")
+			if len(s) == 0 {
+				log.Warning("servePlayer: queue.move: request contained no 'delta'")
+				return
+			}
+			d, err := strconv.Atoi(s)
+			if err != nil {
+				log.Warning("servePlayer: queue.move: delta was not an integer: %v", err)
+				return
+			}
+
+			queue.Move(i, d)
+		} else if _, ok := r.URL.Query()["queue.remove"]; ok {
+			s := queryVal(r, "index")
+			if len(s) == 0 {
+				log.Warning("servePlayer: queue.remove: request contained no 'index'")
+				return
+			}
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				log.Warning("servePlayer: queue.remove: index was not an integer: %v", err)
+				return
+			}
+
+			queue.Remove(i)
+		} else if _, ok := r.URL.Query()["queue.clear"]; ok {
+			queue.Clear()
 		}
+
 	}
 }
 
@@ -350,7 +380,7 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	defer log.Notice("Websocket handler for %s exiting", ws.RemoteAddr())
 
 	// Send the full status to the browser
-	d, err := jsonFullStatus(player.GetStatus(), meta)
+	d, err := jsonFullStatus(player.GetStatus(), meta, listQueue(queue))
 	if err != nil {
 		log.Error("Error encoding Player event as JSON: %v", err)
 		return
@@ -368,10 +398,6 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	eventTee.Add(c)
 	defer eventTee.Del(c)
 
-	metaChanged := make(chan interface{})
-	metaChangedTee.Add(metaChanged)
-	defer metaChangedTee.Del(metaChanged)
-
 	scanEvents := make(chan interface{})
 	scanTee.Add(scanEvents)
 	defer scanTee.Del(scanEvents)
@@ -381,20 +407,6 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 loop:
 	for {
 		select {
-		case _ = <-metaChanged:
-			d, err = jsonMeta(meta)
-			if err != nil {
-				log.Error("Error encoding metadata as JSON: %v", err)
-				// Hopefully the next one works...
-				continue loop
-			}
-			log.Notice("Writing status to websocket %v", ws.RemoteAddr())
-			err = write(d)
-			if err != nil {
-				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
-				// Client is probably gone. Close our channel and exit.
-				break loop
-			}
 		case e, ok := <-c:
 			if !ok {
 				// Player died...
@@ -403,14 +415,36 @@ loop:
 				break loop
 			}
 
-			log.Info("Got player event %v", e.(play.Event).String())
+			event := e.(play.Event)
+
+			log.Info("Got player event %v", event.Type.String())
 			// Write the player information relevant to the event to the browser
 			s := player.GetStatus()
-			if e.(play.Event) == play.StateChange && s.State == play.Paused {
-				// If we just changed to Paused then we may have loaded a new song, so send all the information.
-				d, err = jsonFullStatus(s, meta)
+			if event.Type == play.StateChange {
+				log.Debug("Player changed state to %v", event.Data.(play.PlayerState))
+			}
+
+			if event.Type == play.StateChange && (event.Data.(play.PlayerState) == play.Paused || event.Data.(play.PlayerState) == play.Empty) {
+				// If we just changed to Paused then we may have loaded a new song, and if we changed to
+				// Empty we have no song. In these cases send _all_ the information (including song metainfo).
+				if event.Data.(play.PlayerState) == play.Paused {
+					if len(s.Path) != 0 {
+						meta = findMp3ByPath(s.Path)
+						if meta == nil {
+							log.Error("Loaded mp3, but can't find metainformation for it...")
+						}
+					}
+					setMetainfo()
+				} else {
+					// Empty.
+					meta = nil
+				}
+				d, err = jsonFullStatus(s, meta, listQueue(queue))
+			} else if event.Type == play.QueueChange {
+				d, err = jsonPlayerEvent(event, listQueue(queue))
 			} else {
-				d, err = jsonPlayerEvent(s, e.(play.Event))
+				//d, err = jsonPlayerEvent(s, e.(play.Event))
+				d, err = jsonPlayerEvent(event, nil)
 			}
 
 			if err != nil {
@@ -471,22 +505,30 @@ func initLogging() {
 }
 
 // Read events from the player and pass them to the tee.
-// Also detect metadata changes and write to metaChangedTee if a change is detected.
 func pumpPlayerEvents() {
 	for e := range player.Events {
 		eventTee.In <- e
-
-		if e == play.StateChange {
-			s := player.GetStatus()
-			if s.State == play.Empty {
-				// Track stopped.
-				metaLock.Lock()
-				meta = nil
-				metaLock.Unlock()
-				metaChangedTee.In <- true
-			}
-		}
 	}
+}
+
+// Read events from the player event tee of type interface{}, convert them to
+// events of type play.Event, and write then on the output channel.
+func adaptor() chan play.Event {
+	c := make(chan interface{})
+	out := make(chan play.Event)
+	eventTee.Add(c)
+
+	go func() {
+		for {
+			e, ok := <-c
+			if !ok {
+				break
+			}
+			out <- e.(play.Event)
+		}
+	}()
+
+	return out
 }
 
 // Scan the specified directories for mp3s.
@@ -551,6 +593,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// Set up the play queue
+	queue = play.NewQueueWithEvents(player, adaptor())
 
 	go pumpPlayerEvents()
 
