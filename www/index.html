@@ -21,14 +21,21 @@
       .critlist {
         height: 13em;
         overflow: hidden;
-        overflow-y: scroll;
+        /*overflow-y: scroll;*/
+        overflow-y: auto;
       }
   
       .critlist_elem {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        cursor:pointer;
+        cursor: pointer;
+      }
+
+      .nowrap {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .vspace {
@@ -138,19 +145,46 @@
       <div class="space"></div>
 
       <div class="row">
-        <div class="col-xs-3">
+        <div class="col-xs-6">
           <strong>Play Queue</strong>
           <span class="hspace"></span>
           <span style="cursor:pointer;" class="glyphicon glyphicon-trash" ng-click="clearPlayQueue()"></span>
         </div>
+        <div class="col-xs-6">
+          <strong>Recently Played</strong>
+        </div>
       </div>
-      <div class="row critlist">
-        <div class="col-xs-10" ng-repeat="s in playQueue track by $index">
-          <span>{{s.title}} by <i>{{s.artist}}</i></span>
-          <span class="hspace"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="removeFromPlayQueue($index)"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-up" ng-click="moveInPlayQueue($index,-1)"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-down" ng-click="moveInPlayQueue($index,1)"></span>
+      
+      <div class="row">
+        <div class="col-xs-6">
+          <div class="row critlist">
+            <div class="col-xs-12" ng-repeat="s in playQueue track by $index">
+              <div class="row">
+                <div class="col-xs-10 nowrap">
+                  <span>{{s.title}} by <i>{{s.artist}}</i> from <i>{{s.album}}</i></span>
+                </div>
+                <div class="col-xs-2">
+                  <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="removeFromPlayQueue($index)"></span>
+                  <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-up" ng-click="moveInPlayQueue($index,-1)"></span>
+                  <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-down" ng-click="moveInPlayQueue($index,1)"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-xs-6">
+          <div class="row critlist">
+            <div class="col-xs-12" ng-repeat="s in recentlyPlayed track by $index">
+              <div class="row">
+                <div class="col-xs-10 nowrap">
+                  <span>{{s.title}} by <i>{{s.artist}}</i> from <i>{{s.album}}</i></span>
+                </div>
+                <div class="col-xs-2">
+                  <span style="cursor:pointer;" class="glyphicon glyphicon-share-alt" ng-click="addRecentToPlayQueue($index)"></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

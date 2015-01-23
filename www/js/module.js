@@ -231,6 +231,7 @@ function MainCtrl($scope, $http, $timeout){
   $scope.state = null;
 
   $scope.playQueue = [];
+  $scope.recentlyPlayed = [];
 
   $scope.playerEventsWebsock = null;
 
@@ -339,6 +340,12 @@ function MainCtrl($scope, $http, $timeout){
     });
   }
 
+  var handlePlayerRecentChangeEvent = function(meta){
+    $timeout(function(){
+      $scope.recentlyPlayed = meta;
+    });
+  }
+
   var playerEventsConnect = function(){
     // Build the websocket URL based on the current window location.
     var loc = window.location, new_uri;
@@ -369,6 +376,8 @@ function MainCtrl($scope, $http, $timeout){
         handlePlayerStateEvent(e["State"])
       if("Queue" in e)
         handlePlayerQueueChangeEvent(e["Queue"])
+      if("Recent" in e)
+        handlePlayerRecentChangeEvent(e["Recent"])
     }
 
     $scope.playerEventsWebsock.onopen = function(event){
@@ -753,8 +762,19 @@ function MainCtrl($scope, $http, $timeout){
   $scope.clearPlayQueue = function() {
     playerClearQueue();
   }
-
   /**************** END PLAY QUEUE ******************/
+
+  /**************** RECENTLY PLAYED LIST ******************/
+  $scope.addRecentToPlayQueue = function(index) {
+    console.log("$scope.addRecentToPlayQueue called. index = " + index);
+    var p = $scope.recentlyPlayed[index];
+    console.log(p);
+
+    if(p){
+      playerQueueMp3(p.path);
+    }
+  }
+  /**************** END RECENTLY PLAYED LIST ******************/
 
 
   $scope.playingProp = function(prop){

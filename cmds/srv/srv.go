@@ -6,6 +6,7 @@ package main
 import (
 	//"code.google.com/p/go.net/websocket"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/gorilla/websocket"
@@ -14,7 +15,6 @@ import (
 	"github.com/jeffwilliams/wwwmp3/scan"
 	"github.com/jeffwilliams/wwwmp3/tee"
 	_ "github.com/mattn/go-sqlite3"
-	"encoding/json"
 	"net/http"
 	"os"
 	"strconv"
@@ -37,6 +37,8 @@ var (
 	player play.Player = play.NewPlayer()
 	// The queue for the mp3 player.
 	queue play.Queue
+	// Recently played songs
+	recent Recent
 
 	// Metadata for the currently playing mp3
 	meta     map[string]string
@@ -188,12 +190,11 @@ func setMetainfo() {
 	}
 }
 
-// listQueue returns a slice containing the metainfo of the tracks in the play queue.
-// The metainfo entries are typed as maps of names to values.
-func listQueue(queue play.Queue) (result []map[string]string) {
+// Give an list of paths to mp3 files, return a list of metadata maps
+func pathsToMetadatas(list []string) (result []map[string]string) {
 	result = make([]map[string]string, 0)
 
-	for _, path := range queue.List() {
+	for _, path := range list {
 		m := findMp3ByPath(path)
 		if m == nil {
 			m = map[string]string{
@@ -208,14 +209,15 @@ func listQueue(queue play.Queue) (result []map[string]string) {
 	return
 }
 
+// listQueue returns a slice containing the metainfo of the tracks in the play queue.
+// The metainfo entries are typed as maps of names to values.
+func listQueue(queue play.Queue) []map[string]string {
+	return pathsToMetadatas(queue.List())
+}
+
 // Perform functions on the mp3 player like play and pause.
 func servePlayer(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		// Query string Format:
-		// Load an mp3:
-		//  load=<path>
-		// Play:
-		//  play=play
 		if v := queryVal(r, "enqueue"); len(v) > 0 {
 			log.Notice("servePlayer: enqueue")
 			queue.Enqueue(v)
@@ -303,6 +305,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			queue.Remove(i)
 		} else if _, ok := r.URL.Query()["queue.clear"]; ok {
 			queue.Clear()
+		} else if _, ok := r.URL.Query()["recent.list"]; ok {
+			enc := json.NewEncoder(w)
+			enc.Encode(pathsToMetadatas(recent.Slice()))
 		}
 
 	}
@@ -355,7 +360,6 @@ State is an enumeration with the values:
 
 Meta may be null if there is no loaded mp3.
 */
-//func playerEvents(ws *websocket.Conn) {
 func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", 405)
@@ -372,21 +376,16 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 
 	log.Notice("Websocket connection from %s %v", ws.RemoteAddr(), userAgent)
 
-	write := func(payload []byte) error {
-		ws.SetWriteDeadline(time.Now().Add(10 * time.Millisecond))
-		return ws.WriteMessage(websocket.TextMessage, payload)
-	}
-
 	defer log.Notice("Websocket handler for %s exiting", ws.RemoteAddr())
 
 	// Send the full status to the browser
-	d, err := jsonFullStatus(player.GetStatus(), meta, listQueue(queue))
+	d, err := jsonFullStatus(player.GetStatus(), meta, listQueue(queue), pathsToMetadatas(recent.Slice()))
 	if err != nil {
 		log.Error("Error encoding Player event as JSON: %v", err)
 		return
 	}
 	log.Notice("Writing complete status to websocket %s", ws.RemoteAddr())
-	err = write(d)
+	err = websockWrite(ws, d)
 	if err != nil {
 		log.Error("Error writing to websocket %s: %v. Handler for socket is terminating.", ws.RemoteAddr(), err)
 		// Client is probably gone. Close our channel and exit.
@@ -415,50 +414,10 @@ loop:
 				break loop
 			}
 
-			event := e.(play.Event)
-
-			log.Info("Got player event %v", event.Type.String())
-			// Write the player information relevant to the event to the browser
-			s := player.GetStatus()
-			if event.Type == play.StateChange {
-				log.Debug("Player changed state to %v", event.Data.(play.PlayerState))
-			}
-
-			if event.Type == play.StateChange && (event.Data.(play.PlayerState) == play.Paused || event.Data.(play.PlayerState) == play.Empty) {
-				// If we just changed to Paused then we may have loaded a new song, and if we changed to
-				// Empty we have no song. In these cases send _all_ the information (including song metainfo).
-				if event.Data.(play.PlayerState) == play.Paused {
-					if len(s.Path) != 0 {
-						meta = findMp3ByPath(s.Path)
-						if meta == nil {
-							log.Error("Loaded mp3, but can't find metainformation for it...")
-						}
-					}
-					setMetainfo()
-				} else {
-					// Empty.
-					meta = nil
-				}
-				d, err = jsonFullStatus(s, meta, listQueue(queue))
-			} else if event.Type == play.QueueChange {
-				d, err = jsonPlayerEvent(event, listQueue(queue))
-			} else {
-				//d, err = jsonPlayerEvent(s, e.(play.Event))
-				d, err = jsonPlayerEvent(event, nil)
-			}
-
-			if err != nil {
-				log.Error("Error encoding Player event as JSON: %v", err)
-				// Hopefully the next one works...
-				continue loop
-			}
-			log.Notice("Writing status to websocket %v", ws.RemoteAddr())
-			err = write(d)
-			if err != nil {
-				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
-				// Client is probably gone. Close our channel and exit.
+			if !websockHandlePlayerEvent(ws, e.(play.Event)) {
 				break loop
 			}
+
 		case e, ok := <-scanEvents:
 			if !ok {
 				// Something closed the scanner channel.
@@ -473,7 +432,7 @@ loop:
 				// Hopefully the next one works...
 				continue loop
 			}
-			err = write(d)
+			err = websockWrite(ws, d)
 			if err != nil {
 				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
 				// Client is probably gone. Close our channel and exit.
@@ -481,6 +440,75 @@ loop:
 			}
 		}
 	}
+}
+
+// websockWrite writes bytes to a websocket with a timeout.
+func websockWrite(ws *websocket.Conn, payload []byte) error {
+	ws.SetWriteDeadline(time.Now().Add(10 * time.Millisecond))
+	return ws.WriteMessage(websocket.TextMessage, payload)
+}
+
+func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid bool) {
+	wsValid = true
+
+	log.Info("Got player event %v", event.Type.String())
+	// Write the player information relevant to the event to the browser
+	s := player.GetStatus()
+	if event.Type == play.StateChange {
+		log.Debug("Player changed state to %v", event.Data.(play.PlayerState))
+	}
+
+	var (
+		err error
+		d   []byte
+	)
+
+	if event.Type == play.StateChange {
+		if event.Data.(play.PlayerState) == play.Empty {
+			// Commit the mp3 that just finished to the recent list
+			recent.Commit()
+		}
+
+		if event.Data.(play.PlayerState) == play.Paused || event.Data.(play.PlayerState) == play.Empty {
+			// If we just changed to Paused then we may have loaded a new song, and if we changed to
+			// Empty we have no song. In these cases send _all_ the information (including song metainfo).
+			if event.Data.(play.PlayerState) == play.Paused {
+				if len(s.Path) != 0 {
+					meta = findMp3ByPath(s.Path)
+					if meta == nil {
+						log.Error("Loaded mp3, but can't find metainformation for it...")
+					}
+				}
+				setMetainfo()
+			} else {
+				// Empty.
+				meta = nil
+			}
+			d, err = jsonFullStatus(s, meta, listQueue(queue), pathsToMetadatas(recent.Slice()))
+		} else if event.Data.(play.PlayerState) == play.Playing {
+			// Hold the current mp3, and add it to the list when it's stopped.
+			recent.Hold(s.Path)
+		}
+
+	} else if event.Type == play.QueueChange {
+		d, err = jsonPlayerEvent(event, listQueue(queue))
+	} else {
+		d, err = jsonPlayerEvent(event, nil)
+	}
+
+	if err != nil {
+		log.Error("Error encoding Player event as JSON: %v", err)
+		// Hopefully the next one works...
+		return
+	}
+	log.Notice("Writing status to websocket %v", ws.RemoteAddr())
+	err = websockWrite(ws, d)
+	if err != nil {
+		log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
+		// Client is probably gone. Close our channel and exit
+		wsValid = false
+	}
+	return
 }
 
 func openDb(path string) (mp3db scan.Mp3Db, err error) {

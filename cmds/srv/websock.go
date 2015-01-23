@@ -68,12 +68,13 @@ func jsonPlayerStatus(status play.PlayerStatus) ([]byte, error) {
 }
 
 // jsonFullStatus creates a JSON message that contains the player status and the meta information
-func jsonFullStatus(status play.PlayerStatus, meta map[string]string, queue []map[string]string) ([]byte, error) {
+func jsonFullStatus(status play.PlayerStatus, meta map[string]string, queue []map[string]string, recent []map[string]string) ([]byte, error) {
 	a := struct {
 		play.PlayerStatus
-		Meta  map[string]string
-		Queue []map[string]string
-	}{status, meta, queue}
+		Meta   map[string]string
+		Queue  []map[string]string
+		Recent []map[string]string
+	}{status, meta, queue, recent}
 	return json.Marshal(a)
 }
 
@@ -90,5 +91,13 @@ func jsonScan(meta *scan.Metadata) ([]byte, error) {
 	a := struct {
 		Scan *scan.Metadata
 	}{Scan: meta}
+	return json.Marshal(a)
+}
+
+// jsonScan creates a JSON message with the recently played tracks.
+func jsonRecent(recent []map[string]string) ([]byte, error) {
+	a := struct {
+		Recent []map[string]string
+	}{Recent: recent}
 	return json.Marshal(a)
 }
