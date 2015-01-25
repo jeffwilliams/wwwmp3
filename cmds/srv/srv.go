@@ -485,11 +485,13 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 				meta = nil
 			}
 			d, err = jsonFullStatus(s, meta, listQueue(queue), pathsToMetadatas(recent.Slice()))
-		} else if event.Data.(play.PlayerState) == play.Playing {
-			// Hold the current mp3, and add it to the list when it's stopped.
-			recent.Hold(s.Path)
+		} else {
+			if event.Data.(play.PlayerState) == play.Playing {
+				// Hold the current mp3, and add it to the list when it's stopped.
+				recent.Hold(s.Path)
+			}
+			d, err = jsonPlayerEvent(event, nil)
 		}
-
 	} else if event.Type == play.QueueChange {
 		d, err = jsonPlayerEvent(event, listQueue(queue))
 	} else {

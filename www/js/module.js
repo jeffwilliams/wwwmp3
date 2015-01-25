@@ -790,7 +790,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   $scope.playPauseImg = function(){
-    if ($scope.state == "stopped"){
+    if ($scope.state == "paused"){
       return "play.png"
     } else if ($scope.state == "playing"){
       return "pause.png"
