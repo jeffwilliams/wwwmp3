@@ -267,6 +267,7 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			enc := json.NewEncoder(w)
 			enc.Encode(listQueue(queue))
 		} else if _, ok := r.URL.Query()["queue.move"]; ok {
+			log.Notice("servePlayer: queue.move started")
 			s := queryVal(r, "index")
 			if len(s) == 0 {
 				log.Warning("servePlayer: queue.move: request contained no 'index'")
@@ -290,6 +291,7 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			}
 
 			queue.Move(i, d)
+			log.Notice("servePlayer: queue.move completed")
 		} else if _, ok := r.URL.Query()["queue.remove"]; ok {
 			s := queryVal(r, "index")
 			if len(s) == 0 {
@@ -452,11 +454,6 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 	wsValid = true
 
 	log.Info("Got player event %v", event.Type.String())
-	// Write the player information relevant to the event to the browser
-	s := player.GetStatus()
-	if event.Type == play.StateChange {
-		log.Debug("Player changed state to %v", event.Data.(play.PlayerState))
-	}
 
 	var (
 		err error
@@ -469,6 +466,7 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 			recent.Commit()
 		}
 
+		s := player.GetStatus()
 		if event.Data.(play.PlayerState) == play.Paused || event.Data.(play.PlayerState) == play.Empty {
 			// If we just changed to Paused then we may have loaded a new song, and if we changed to
 			// Empty we have no song. In these cases send _all_ the information (including song metainfo).
@@ -487,6 +485,7 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 			d, err = jsonFullStatus(s, meta, listQueue(queue), pathsToMetadatas(recent.Slice()))
 		} else {
 			if event.Data.(play.PlayerState) == play.Playing {
+				s := player.GetStatus()
 				// Hold the current mp3, and add it to the list when it's stopped.
 				recent.Hold(s.Path)
 			}

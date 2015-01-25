@@ -516,7 +516,7 @@ func NewPlayer() (p Player) {
 						timer = time.Now()
 						sendEvent(Event{Type: OffsetChange, Data: o})
 						if debug {
-							fmt.Printf("player: sending offsetchange event took %v\n", time.Now().Sub(timer))
+							fmt.Printf("player: sending offsetchange event for offset %v took %v\n", o, time.Now().Sub(timer))
 						}
 					}
 				}
