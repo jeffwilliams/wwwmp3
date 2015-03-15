@@ -167,6 +167,7 @@
                   <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="removeFromPlayQueue($index)"></span>
                   <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-up" ng-click="moveInPlayQueue($index,-1)"></span>
                   <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-down" ng-click="moveInPlayQueue($index,1)"></span>
+                  <span style="cursor:pointer;" class="glyphicon glyphicon-open" ng-click="moveToTopInPlayQueue($index)"></span>
                 </div>
               </div>
             </div>
@@ -205,8 +206,6 @@
           <strong>Track</strong>
           <span class="hspace"></span>
           <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="setTitleCriteria('')"></span>
-          <span class="hspace"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-share-alt" ng-click="addSelectedToPlayQueue()"></span>
         </div>
       </div>
       <div class="row">
@@ -238,8 +237,15 @@
           </div>
         </div>
         <div class="col-xs-5">
+          <!--
           <select ng-options="s.title for s in songs" size="10" class="form-control" ng-model="song">
           </select>
+          -->
+          <div>
+            <div ng-repeat="s in songs" ng-click="setTitleCriteria(s.title)" class="critlist_elem">
+              {{s.title}}
+            </div>
+          </div>
         </div>
       </div>
       <div class="row">
@@ -286,6 +292,20 @@
           </div>
         </div>
       </div>
+
+      <div class="row">
+        <div class="col-xs-10">
+          <div class="vspace"></div>
+          <select ng-options="(s.title + ' by ' + s.artist + ' from ' + s.album) for s in songs" size="10" class="form-control" ng-model="song">
+          </select>
+        </div>
+        <div class="col-xs-1">
+          <div class="vspace"></div>
+          <span class="hspace"></span>
+          <span style="cursor:pointer;" class="bigicon glyphicon glyphicon-share-alt" ng-click="addSelectedToPlayQueue()"></span>
+        </div>
+      </div>
+
       <div class="row">
         <div class="col-xs-2">
           <div class="vspace"></div>

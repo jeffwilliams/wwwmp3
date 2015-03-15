@@ -6,6 +6,7 @@ type queueCmdType int
 
 const (
 	Move queueCmdType = iota
+	MoveToTop
 	Remove
 	Clear
 )
@@ -101,6 +102,12 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 		}
 	}
 
+	moveToTop := func(index int) {
+		e := nth(q.files, index)
+		v := q.files.Remove(e)
+		q.files.PushFront(v)
+	}
+
 	remove := func(index int) {
 		if index < 0 || index > q.files.Len()-1 {
 			return
@@ -119,6 +126,8 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 	modify := func(cmd queueCmd) {
 		if cmd.Type == Move {
 			move(cmd.Index, cmd.Delta)
+		} else if cmd.Type == MoveToTop {
+			moveToTop(cmd.Index)
 		} else if cmd.Type == Remove {
 			remove(cmd.Index)
 		} else if cmd.Type == Clear {
@@ -173,6 +182,11 @@ func (q Queue) List() []string {
 // -1 and +1 are supported for delta.
 func (q Queue) Move(index int, delta int) {
 	q.modify <- queueCmd{Type: Move, Index: index, Delta: delta}
+}
+
+// Move the specified queue element to the top of the queue.
+func (q Queue) MoveToTop(index int) {
+	q.modify <- queueCmd{Type: MoveToTop, Index: index}
 }
 
 // Remove removes the specified queue element from the queue.

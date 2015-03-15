@@ -698,6 +698,20 @@ function MainCtrl($scope, $http, $timeout){
       });
   }
 
+  var playerMoveToTopInQueue = function(index, delta){
+    var parms = {
+      'queue.move_to_top': 'y',
+      'index': index
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: changing queue failed: " + data);
+      });
+  }
+
   var playerRemoveFromQueue = function(index){
     var parms = {
       'queue.remove': 'y',
@@ -847,6 +861,10 @@ function MainCtrl($scope, $http, $timeout){
 
   $scope.moveInPlayQueue = function(index,delta){
     playerMoveInQueue(index, delta);
+  }
+
+  $scope.moveToTopInPlayQueue = function(index){
+    playerMoveToTopInQueue(index);
   }
 
   $scope.clearPlayQueue = function() {

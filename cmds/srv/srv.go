@@ -292,6 +292,21 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 
 			queue.Move(i, d)
 			log.Notice("servePlayer: queue.move completed")
+		} else if _, ok := r.URL.Query()["queue.move_to_top"]; ok {
+			log.Notice("servePlayer: queue.move_to_top started")
+			s := queryVal(r, "index")
+			if len(s) == 0 {
+				log.Warning("servePlayer: queue.move: request contained no 'index'")
+				return
+			}
+			i, err := strconv.Atoi(s)
+			if err != nil {
+				log.Warning("servePlayer: queue.move: index was not an integer: %v", err)
+				return
+			}
+
+			queue.MoveToTop(i)
+			log.Notice("servePlayer: queue.move_to_top completed")
 		} else if _, ok := r.URL.Query()["queue.remove"]; ok {
 			s := queryVal(r, "index")
 			if len(s) == 0 {
