@@ -89,6 +89,48 @@ function Throttler($timeout, delay, set){
 }
 
 /*
+ * This class keeps track of which page of results we were on for each previous
+ * shorter search string. 
+ */
+function SearchStringPage(){
+  // Array indexed by search string size that contains the page number we were on when 
+  // the search string was that size. 
+  //
+  // For example if the search string was empty, the user then changed from page 0 to
+  // page 3, 'a' was entered, the user then changed from page 0 to
+  // page 1, then entered 'm', this array would contain [3,1].
+  //  
+  this.pages = [];
+
+  this.reset = function() {
+    this.pages = [];
+  }
+
+  this.update = function(searchlen, page) {
+    // If the search string length is smaller than the entries we have in pages, then
+    // we can shrink pages because the user has hit backspace to truncate the search string.
+    while (this.pages.length > searchlen+1){
+      this.pages.pop();
+    }
+    // If the search string length is greater than the entries we have in pages, then
+    // we need to add new entries.
+    while (this.pages.length <= searchlen){
+      this.pages.push(0);
+    }
+
+    this.pages[searchlen] = page;
+  }
+
+  // Get the page for the searchlen
+  this.get = function(searchlen) {
+    if (searchlen >= this.pages.length) {
+      return 0;
+    }
+    return this.pages[searchlen];
+  }
+}
+
+/*
 Parameters: Pass a variable number of [property, criteria] pairs.
 This function returns a new function f. f takes one argument, a Mp3 structure,
 and returns true if Mp3 matches each of the [property, criteria] pairs. For each
@@ -210,6 +252,10 @@ function MainCtrl($scope, $http, $timeout){
   $scope.albumPageIsLast = true;
   $scope.titlePage = 0;
   $scope.titlePageIsLast = true;
+
+  $scope.artistFormerPages = new SearchStringPage();
+  $scope.albumFormerPages = new SearchStringPage();
+  $scope.titleFormerPages = new SearchStringPage();
 
   $scope.volume = 50;
 
@@ -467,8 +513,30 @@ function MainCtrl($scope, $http, $timeout){
       fixSelection($scope.songs, $scope.song, function(x){console.log("changing song to " + x); $scope.song = x} );
     })
   }
+  
+  // Update the artist, album, and title lists based on the current filter. If setPage is not null,
+  // it is called after pages are initialized to 0 to set the pages to the correct value.
+  var reloadMp3Metainfo = function(setPage) {
+    $scope.artistPage = 0;
+    $scope.albumPage = 0;
+    $scope.titlePage = 0;
+
+    if (setPage) {
+      setPage();
+    }
+
+    getArtists();
+    getAlbums();
+    getSongs();
+  }
+
 
   $scope.setArtistCriteria = function(s) {
+    if ($scope.artistCriteria == '' && s == '' && $scope.artistPage != 0) {
+      $scope.artistFormerPages.reset();
+      reloadMp3Metainfo(null);
+    }
+
     $scope.artistCriteria = s;
   }
 
@@ -493,6 +561,7 @@ function MainCtrl($scope, $http, $timeout){
 
     if ($scope.artistPage != oldpage){
       getArtists();
+      $scope.artistFormerPages.update($scope.artistCriteria.length, $scope.artistPage);
     }
   }
 
@@ -509,6 +578,7 @@ function MainCtrl($scope, $http, $timeout){
 
     if ($scope.albumPage != oldpage){
       getAlbums();
+      $scope.albumFormerPages.update($scope.albumCriteria.length, $scope.albumPage);
     }
   }
 
@@ -525,6 +595,7 @@ function MainCtrl($scope, $http, $timeout){
 
     if ($scope.titlePage != oldpage){
       getSongs();
+      $scope.titleFormerPages.update($scope.titleCriteria.length, $scope.titlePage);
     }
   }
   /**************** END MP3 METAINFORMATION ******************/
@@ -718,21 +789,40 @@ function MainCtrl($scope, $http, $timeout){
   playerEventsConnect();
 
   // Whenever one of our filters changes, reload the list of songs to match the filters.
-  var filtersChanged = function(newValue, oldValue){
+  var filtersChanged = function(newValue, oldValue, setPage){
     if(newValue != oldValue){
-      $scope.artistPage = 0;
-      $scope.albumPage = 0;
-      $scope.titlePage = 0;
-      
-      getArtists();
-      getAlbums();
-      getSongs();
+      var callback = null;
+
+      if(newValue.length < oldValue.length){
+        callback = setPage;
+      }
+  
+      reloadMp3Metainfo(setPage);
     }
   }
 
-  $scope.$watch('artistCriteria', filtersChanged);
-  $scope.$watch('albumCriteria', filtersChanged);
-  $scope.$watch('titleCriteria', filtersChanged);
+  var artistFilterChanged = function(newValue, oldValue){
+    filtersChanged(newValue, oldValue, function(){
+      $scope.artistPage = $scope.artistFormerPages.get(newValue.length);
+    });
+  }
+
+  var albumFilterChanged = function(newValue, oldValue){
+    filtersChanged(newValue, oldValue, function(){
+      $scope.albumPage = $scope.albumFormerPages.get(newValue.length);
+    });
+  }
+
+  var titleFilterChanged = function(newValue, oldValue){
+    filtersChanged(newValue, oldValue, function(){
+      $scope.titlePage = $scope.titleFormerPages.get(newValue.length);
+    });
+  }
+
+
+  $scope.$watch('artistCriteria', artistFilterChanged);
+  $scope.$watch('albumCriteria', albumFilterChanged);
+  $scope.$watch('titleCriteria', titleFilterChanged);
 
   $scope.volumeMouseup = function(){
     playerSetVolume();
