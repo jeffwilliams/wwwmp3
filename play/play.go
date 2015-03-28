@@ -228,6 +228,8 @@ func NewPlayer() (p Player) {
 		var writer *C.ao_device
 		var lastofftime time.Time
 		lastoff := -1
+		// When a new track is loaded, this Info struct is loaded with the details.
+		var currentTrackInfo *Info
 
 		var state PlayerState = Empty
 		var states [3]func()
@@ -267,6 +269,29 @@ func NewPlayer() (p Player) {
 			}
 		}
 
+		getInfo := func() *Info {
+			if state != Empty {
+				i, err := C.play_getinfo(reader)
+				if err != nil {
+					return nil
+				}
+
+				info := &Info{BitRate: int(i.bitrate), Rate: int(i.rate)}
+				d, err := C.play_seconds_per_sample(reader)
+				size := int(C.play_length(reader))
+				if err == nil {
+					info.Sps = float64(d)
+					if size > 0 {
+						info.Duration = float64(d) * float64(size)
+					}
+				}
+
+				return info
+			} else {
+				return nil
+			}
+		}
+
 		// Stop the currently playing mp3 if it's playing, and unload it.
 		stop := func() {
 			if state != Empty {
@@ -276,6 +301,7 @@ func NewPlayer() (p Player) {
 				deleteWriter()
 
 				state = Empty
+				currentTrackInfo = nil
 			}
 		}
 
@@ -308,6 +334,9 @@ func NewPlayer() (p Player) {
 
 			cmd.err <- nil
 			state = Paused
+
+			// Cache the info about the current track
+			currentTrackInfo = getInfo()
 		}
 
 		// Play the loaded mp3.
@@ -385,23 +414,10 @@ func NewPlayer() (p Player) {
 				return true
 			case getInfoCmd:
 				if state != Empty {
-					i, err := C.play_getinfo(reader)
-					if err != nil {
-						cmd.(getInfoCmd) <- nil
-						break
-					}
+					timer := time.Now()
 
-					info := &Info{BitRate: int(i.bitrate), Rate: int(i.rate)}
-					d, err := C.play_seconds_per_sample(reader)
-					size := int(C.play_length(reader))
-					if err == nil {
-						info.Sps = float64(d)
-						if size > 0 {
-							info.Duration = float64(d) * float64(size)
-						}
-					}
-
-					cmd.(getInfoCmd) <- info
+					cmd.(getInfoCmd) <- currentTrackInfo
+					fmt.Printf("player: sending getInfoCmd took %v\n", time.Now().Sub(timer))
 				} else {
 					cmd.(getInfoCmd) <- nil
 				}
