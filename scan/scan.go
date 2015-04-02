@@ -32,18 +32,18 @@ func (m Metadata) String() string {
 }
 
 // Scan a directory tree for files. Pass the full path of all files to the `files` chan.
-func Scan(basedir string, files chan string) {
+// If reading basedir fails, an error is returned.
+func Scan(basedir string, files chan string) error {
 	defer func() {
 		close(files)
 	}()
 
-	var scan func(dir string)
+	var scan func(dir string) error
 
-	scan = func(dir string) {
+	scan = func(dir string) error {
 		file, err := os.Open(dir)
 		if err != nil {
-			fmt.Println("Opening directory", basedir, "failed:", err)
-			return
+			return fmt.Errorf("Opening directory %v failed: %v", basedir, err)
 		}
 
 		for {
@@ -55,15 +55,18 @@ func Scan(basedir string, files chan string) {
 
 			for _, fin := range fi {
 				if fin.IsDir() {
+					// Ignore errors reading subdirectories
 					scan(dir + "/" + fin.Name())
 				} else {
 					files <- dir + "/" + fin.Name()
 				}
 			}
 		}
+
+		return nil
 	}
 
-	scan(basedir)
+	return scan(basedir)
 }
 
 var mp3Regexp *regexp.Regexp = regexp.MustCompile(`\.[mM][pP]3$`)

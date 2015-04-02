@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -88,7 +89,7 @@ func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 
 // ScanMp3sToDb scans a directory tree for mp3 files and updates `db` with the new mp3 information found.
 // If `callback` is not nil, it is called each metadata.
-func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) {
+func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) error {
 	c := make(chan Metadata)
 
 	go ScanMp3s(basedir, c)
@@ -96,19 +97,17 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) {
 	i := 0
 	for m := range c {
 
-		//fmt.Println("Adding", m);
-
 		var cnt int
 		err := db.stmtPathExists.QueryRow(m.Path).Scan(&cnt)
 
 		if err != nil {
-			fmt.Println("ScanMp3sToDb: querying for existence failed:", err)
+			fmt.Errorf("ScanMp3sToDb: querying for existence failed: %v", err)
 			continue
 		}
 
 		tx, err := db.DB.Begin()
 		if err != nil {
-			fmt.Println("ScanMp3sToDb: creating transaction failed:", err)
+			fmt.Errorf("ScanMp3sToDb: creating transaction failed: %v", err)
 		}
 
 		var stmt *sql.Stmt
@@ -122,11 +121,12 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) {
 
 		_, err = stmt.Exec(m.Artist, m.Album, m.Title, m.Path)
 		if err != nil {
-			fmt.Printf("ScanMp3sToDb: inserting or updating failed: %v\n", err)
+			fmt.Errorf("ScanMp3sToDb: inserting or updating failed: %v\n", err)
+			continue
 		}
 		err = tx.Commit()
 		if err != nil {
-			fmt.Println("ScanMp3sToDb: commit failed:", err)
+			fmt.Errorf("ScanMp3sToDb: commit failed: %v", err)
 		}
 
 		i++
@@ -134,6 +134,8 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) {
 			callback(&m)
 		}
 	}
+
+	return nil
 }
 
 // Paging describes what page of data to return.
@@ -166,7 +168,7 @@ func escape(s string) string {
 // `order` should be a list of field names to order ascending by, or nil for no ordering.
 // `p` describes what page of data to return; PageSize rows are returned, starting at row Page*PageSize.
 // Results are written to `ch` as maps where the keys are fieldnames and values are field values.
-func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []string, ch chan map[string]string, p *Paging) {
+func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []string, ch chan map[string]string, p *Paging, errWriter io.Writer) {
 	defer close(ch)
 
 	var sql bytes.Buffer
@@ -227,11 +229,9 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 		sql.WriteString(strconv.Itoa(p.Page * p.PageSize))
 	}
 
-	fmt.Println("scan.FindMp3sInDb: executing SQL " + sql.String())
-
 	rows, err := db.DB.Query(sql.String())
-	if err != nil {
-		fmt.Println("scan.FindMp3sInDb: query failed:", err)
+	if err != nil && errWriter != nil {
+		fmt.Fprintln(errWriter, "scan.FindMp3sInDb: query failed:", err)
 		return
 	}
 	defer rows.Close()
@@ -252,8 +252,8 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 			break
 		}
 
-		if err := rows.Scan(fieldValPtrs...); err != nil {
-			fmt.Println("scan.FindMp3sInDb: db read failed:", err)
+		if err := rows.Scan(fieldValPtrs...); err != nil && errWriter != nil {
+			fmt.Fprintln(errWriter, "scan.FindMp3sInDb: db read failed:", err)
 		} else {
 			m := make(map[string]string)
 
@@ -269,8 +269,8 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 		ch <- map[string]string{"eof": "eof"}
 	}
 
-	if err := rows.Err(); err != nil {
-		fmt.Println("scan.FindMp3sInDb: query error:", err)
+	if err := rows.Err(); err != nil && errWriter != nil {
+		fmt.Fprintln(errWriter, "scan.FindMp3sInDb: query error:", err)
 	}
 
 	return

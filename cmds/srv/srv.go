@@ -17,9 +17,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -28,10 +30,12 @@ const (
 )
 
 var (
-	helpFlag   = flag.Bool("help", false, "Print help")
-	dbflag     = flag.String("db", "mp3.db", "database containing mp3 info")
-	allVolFlag = flag.Bool("allvol", false, "If set to true, changing the volume affects all ALSA cards, not just the default.")
-	db         scan.Mp3Db
+	helpFlag     = flag.Bool("help", false, "Print help")
+	dbflag       = flag.String("db", "mp3.db", "database containing mp3 info")
+	allVolFlag   = flag.Bool("allvol", false, "If set to true, changing the volume affects all ALSA cards, not just the default.")
+	logfileFlag  = flag.String("log", "", "File to write log messages to. Defaults to stdout if not specified.")
+	logLevelFlag = flag.String("loglevel", "DEBUG", "Minimum severity of log messages to write. One of DEBUG, INFO, NOTICE, WARNING, ERROR, or CRITICAL")
+	db           scan.Mp3Db
 
 	// The mp3 player
 	player play.Player = play.NewPlayer()
@@ -49,7 +53,10 @@ var (
 	// Player events are written to this Tee
 	eventTee = tee.New()
 
-	log = logging.MustGetLogger("server")
+	log *logging.Logger
+
+	// If we are not logging to stdout, this is the file handle we are using.
+	logFile *os.File
 
 	// Directories to scan recursively to find mp3s.
 	mp3Dirs []string
@@ -132,7 +139,8 @@ func serveMeta(w http.ResponseWriter, r *http.Request) {
 			filt,
 			order,
 			ch,
-			&scan.Paging{PageSize: pageSize, Page: page})
+			&scan.Paging{PageSize: pageSize, Page: page},
+			nil)
 
 		enc := json.NewEncoder(w)
 		w.Write([]byte("[\n"))
@@ -162,7 +170,8 @@ func findMp3ByPath(path string) map[string]string {
 		map[string]string{"path": path},
 		nil,
 		ch,
-		&scan.Paging{PageSize: 1, Page: 0})
+		&scan.Paging{PageSize: 1, Page: 0},
+		nil)
 
 	r := <-ch
 
@@ -235,7 +244,10 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			log.Notice("servePlayer: stop")
 			player.Stop()
 		} else if _, ok := r.URL.Query()["getvolume"]; ok {
-			v := play.GetVolume()
+			v, err := play.GetVolume()
+			if err != nil {
+				log.Error("%v", err)
+			}
 			w.Write([]byte("{\"volume\": "))
 			w.Write([]byte(strconv.Itoa(int(v))))
 			w.Write([]byte("}"))
@@ -508,6 +520,8 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 		}
 	} else if event.Type == play.QueueChange {
 		d, err = jsonPlayerEvent(event, listQueue(queue))
+	} else if event.Type == play.Error {
+		log.Error("%v", event.Data.(error))
 	} else {
 		d, err = jsonPlayerEvent(event, nil)
 	}
@@ -542,10 +556,48 @@ func openDb(path string) (mp3db scan.Mp3Db, err error) {
 }
 
 func initLogging() {
-	var format = logging.MustStringFormatter(
-		"%{color}%{time:2006-01-02 15:04:05.000000} %{module}: %{level:.4s} %{color:reset} %{message}",
-	)
-	logging.SetFormatter(format)
+	wasSetup := false
+
+	if len(*logfileFlag) != 0 {
+		err := setFileLogBackend(*logfileFlag)
+		if err == nil {
+			var format = logging.MustStringFormatter(
+				"%{time:2006-01-02 15:04:05.000000} %{module}: %{level:.4s} %{color:reset} %{message}",
+			)
+			logging.SetFormatter(format)
+			wasSetup = true
+		}
+	}
+
+	if !wasSetup {
+		// Use stdout
+		var format = logging.MustStringFormatter(
+			"%{color}%{time:2006-01-02 15:04:05.000000} %{module}: %{level:.4s} %{color:reset} %{message}",
+		)
+		logging.SetFormatter(format)
+	}
+
+	level, levelErr := logging.LogLevel(*logLevelFlag)
+	if levelErr == nil {
+		logging.SetLevel(level, "")
+	} else {
+		log.Error("Setting logging level to %v failed: %v", *logLevelFlag, levelErr)
+	}
+}
+
+// Set the logfile that the logging module will use to the specified logfile.
+func setFileLogBackend(logfilePath string) error {
+	file, err := os.OpenFile(logfilePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err == nil {
+		logging.SetBackend(logging.NewLogBackend(file, "", 0))
+		if logFile != nil {
+			logFile.Close()
+		}
+		logFile = file
+		return nil
+	} else {
+		return err
+	}
 }
 
 // Read events from the player and pass them to the tee.
@@ -616,6 +668,20 @@ func showHelp() {
 	flag.PrintDefaults()
 }
 
+func handleSignals() {
+	c := make(chan os.Signal, 1)
+
+	signal.Notify(c, syscall.SIGHUP)
+
+	for _ = range c {
+		// Reopen the logfile. I am assuming that the go-logging package is safe to be called from multiple goroutines.
+		if len(*logfileFlag) != 0 {
+			setFileLogBackend(*logfileFlag)
+			log.Info("Reopened logfile on HUP")
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -627,6 +693,7 @@ func main() {
 	mp3Dirs = flag.Args()
 
 	initLogging()
+	log = logging.MustGetLogger("server")
 
 	var err error
 
@@ -642,6 +709,8 @@ func main() {
 	queue = play.NewQueueWithEvents(player, adaptor())
 
 	go pumpPlayerEvents()
+
+	go handleSignals()
 
 	// Setup http server
 	http.HandleFunc("/songmeta", serveMeta)

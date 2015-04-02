@@ -38,7 +38,8 @@ func output(db scan.Mp3Db, filt map[string]string) {
 		filt,
 		[]string{"artist", "album", "title"},
 		ch,
-		paging)
+		paging,
+		os.Stderr)
 
 	for meta := range ch {
 		if _, ok := meta["eof"]; ok {

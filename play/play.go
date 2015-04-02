@@ -24,11 +24,16 @@ import (
 // For development
 var _ = fmt.Println
 
-const debug = true
+const debug = false
 
 // Package init function
 func init() {
 	C.play_init()
+}
+
+// Make an instance of error using the from the passed prefix and the C.play_get_last_error() return value.
+func makePlayError(prefix string) error {
+	return errors.New(prefix + C.GoString(C.play_get_last_error()))
 }
 
 // Play the specified file. Return when playback is complete.
@@ -40,25 +45,38 @@ func Play(filename string) {
 
 // Set the volume as a percentage between 0 and 100 inclusive.
 // This method sets the volume on the default ALSA card.
-func SetVolume(pct byte) {
-	C.play_setvolume(C.uchar(pct), C.CString("default"))
+func SetVolume(pct byte) (err error) {
+	err = nil
+	if C.play_setvolume(C.uchar(pct), C.CString("default")) < 0 {
+		err = makePlayError("Setting volume failed: ")
+	}
+
+	return
 }
 
 // Set the volume as a percentage between 0 and 100 inclusive.
 // This method sets the volume on all ALSA cards.
-func SetVolumeAll(pct byte) {
-	C.play_setvolume_all(C.uchar(pct))
+func SetVolumeAll(pct byte) (err error) {
+	err = nil
+	if C.play_setvolume_all(C.uchar(pct)) < 0 {
+		err = makePlayError("Setting volume failed: ")
+	}
+
+	return
 }
 
 // Get the volume as a percentage between 0 and 100 inclusive.
-func GetVolume() byte {
+func GetVolume() (volume byte, err error) {
 	v := int8(C.play_getvolume())
 	if v >= 0 {
-		return byte(v)
+		volume = byte(v)
 	} else {
 		// Error occurred. Return 0.
-		return 0
+		volume = 0
+		err = makePlayError("Getting volume failed: ")
 	}
+
+	return
 }
 
 // Metadata is information about an mp3 stored in id3 tags.
@@ -176,6 +194,7 @@ type Event struct {
 	// For StateChange, it is a PlayerState.
 	// For VolumeChange, it is a byte in the range 0-100 representing the volume.
 	// For QueueChange, it is not set.
+	// For Error, its an error.
 	Data interface{}
 }
 
@@ -184,6 +203,7 @@ const (
 	StateChange
 	VolumeChange
 	QueueChange
+	Error
 )
 
 func (e EventType) String() string {
@@ -196,6 +216,8 @@ func (e EventType) String() string {
 		return "VolumeChange"
 	case QueueChange:
 		return "QueueChange"
+	case Error:
+		return "Error"
 	default:
 		return "Unknown"
 	}
@@ -246,7 +268,7 @@ func NewPlayer() (p Player) {
 			}
 			writer = C.play_new_writer(reader)
 			if writer == nil {
-				return errors.New("Creating writer failed")
+				return makePlayError("Creating writer failed: ")
 			}
 			return nil
 		}
@@ -273,6 +295,7 @@ func NewPlayer() (p Player) {
 			if state != Empty {
 				i, err := C.play_getinfo(reader)
 				if err != nil {
+					sendEvent(Event{Type: Error, Data: makePlayError("Getting track info failed: ")})
 					return nil
 				}
 
@@ -284,6 +307,8 @@ func NewPlayer() (p Player) {
 					if size > 0 {
 						info.Duration = float64(d) * float64(size)
 					}
+				} else {
+					sendEvent(Event{Type: Error, Data: makePlayError("Getting seconds-per-sample failed: ")})
 				}
 
 				return info
@@ -317,7 +342,7 @@ func NewPlayer() (p Player) {
 			reader = C.play_new_reader(C.CString(path))
 			if reader == nil {
 				close(cmd.size)
-				cmd.err <- errors.New("Creating reader failed")
+				cmd.err <- makePlayError("Creating reader failed: ")
 				return
 			}
 
@@ -375,7 +400,12 @@ func NewPlayer() (p Player) {
 				return
 			}
 
-			C.play_seek(reader, C.int(cmd))
+			rc := C.play_seek(reader, C.int(cmd))
+			if rc < 0 {
+				sendEvent(Event{Type: Error, Data: makePlayError("Seeking failed: ")})
+				return
+			}
+
 			// Zero out lastofftime
 			var zero time.Time
 			lastofftime = zero
@@ -386,17 +416,25 @@ func NewPlayer() (p Player) {
 		handleCommonCmds := func(cmd interface{}) bool {
 			switch cmd.(type) {
 			case setVolumeCmd:
-				SetVolume(byte(cmd.(setVolumeCmd)))
-				sendEvent(Event{Type: VolumeChange, Data: byte(cmd.(setVolumeCmd))})
-				if debug {
-					fmt.Println("player: sending VolumeChange event")
+				err := SetVolume(byte(cmd.(setVolumeCmd)))
+				if err == nil {
+					sendEvent(Event{Type: VolumeChange, Data: byte(cmd.(setVolumeCmd))})
+					if debug {
+						fmt.Println("player: sending VolumeChange event")
+					}
+				} else {
+					sendEvent(Event{Type: Error, Data: err})
 				}
 				return true
 			case setVolumeAllCmd:
-				SetVolumeAll(byte(cmd.(setVolumeAllCmd)))
-				sendEvent(Event{Type: VolumeChange, Data: byte(cmd.(setVolumeCmd))})
-				if debug {
-					fmt.Println("player: sending VolumeChange event")
+				err := SetVolumeAll(byte(cmd.(setVolumeAllCmd)))
+				if err == nil {
+					sendEvent(Event{Type: VolumeChange, Data: byte(cmd.(setVolumeCmd))})
+					if debug {
+						fmt.Println("player: sending VolumeChange event")
+					}
+				} else {
+					sendEvent(Event{Type: Error, Data: err})
 				}
 				return true
 			case getStatusCmd:
@@ -405,9 +443,19 @@ func NewPlayer() (p Player) {
 				size := 0
 				if state != Empty {
 					offset = int(C.play_offset(reader))
+					if offset < 0 {
+						sendEvent(Event{Type: Error, Data: makePlayError("Seeking failed: ")})
+					}
 					size = int(C.play_length(reader))
+					if size < 0 {
+						sendEvent(Event{Type: Error, Data: makePlayError("Length failed: ")})
+					}
 				}
-				cmd.(getStatusCmd) <- PlayerStatus{Offset: offset, Size: size, State: state, Volume: GetVolume(), Path: path}
+				volume, err := GetVolume()
+				if err != nil {
+					sendEvent(Event{Type: Error, Data: err})
+				}
+				cmd.(getStatusCmd) <- PlayerStatus{Offset: offset, Size: size, State: state, Volume: volume, Path: path}
 				if debug {
 					fmt.Printf("player: Generating status took %v\n", time.Now().Sub(timer))
 				}
@@ -521,7 +569,10 @@ func NewPlayer() (p Player) {
 					break
 				}
 
-				C.play_write(writer, reader.buffer, n)
+				rc := C.play_write(writer, reader.buffer, n)
+				if rc < 0 {
+					sendEvent(Event{Type: Error, Data: makePlayError("Writing to soundcard failed: ")})
+				}
 
 				if debug {
 					fmt.Printf("player: copying a buffer of data took %v\n", time.Now().Sub(timer))

@@ -4,6 +4,7 @@
 #include "play.h"
 
 #define BITS 8
+#define MAX_ERROR_LEN 1000
 
 void play_init(){
   ao_initialize();
@@ -18,6 +19,16 @@ void play_free(){
 static char alsa_card[64] = "default";
 static int smixer_level = 0;
 
+static char play_last_error[MAX_ERROR_LEN] = {'\0'};
+
+void play_clear_last_error(){
+  play_last_error[0] = '\0';
+}
+char* play_get_last_error(){
+  return play_last_error;
+}
+
+
 /*
 Adapted from alsa-mixer source code.
 Set the volume on all cards.
@@ -31,10 +42,12 @@ int play_setvolume_all(unsigned char pct){
   snd_ctl_card_info_t *info;
   char buf[16];
 
+
+  play_clear_last_error();
   snd_ctl_card_info_alloca(&info);
   for(;;) {
     if ((err = snd_card_next(&card_num)) < 0) {
-      fprintf(stderr, "Enumerating sound cards failed: %s\n", snd_strerror(err));
+      snprintf(play_last_error, MAX_ERROR_LEN, "Enumerating sound cards failed: %s", snd_strerror(err));
       return err;
     }
 
@@ -66,27 +79,29 @@ int play_setvolume(unsigned char pct, char* alsa_card){
   int found_master = 0;
   long min, max, val;
 
+  play_clear_last_error();
+
   if (pct < 0) pct = 0;
   if (pct > 100) pct = 100;
 
   if ((err = snd_mixer_open(&handle, 0)) < 0) {
-    fprintf(stderr, "Mixer %s open error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer %s open error: %s", alsa_card, snd_strerror(err));
     return err;
   }
   if (smixer_level == 0 && (err = snd_mixer_attach(handle, alsa_card)) < 0) {
-    fprintf(stderr, "Mixer attach %s error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer attach %s error: %s", alsa_card, snd_strerror(err));
     snd_mixer_close(handle);
     return err;
   }
   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0) {
-    fprintf(stderr, "Mixer register error: %s\n", snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer register error: %s", snd_strerror(err));
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
   err = snd_mixer_load(handle);
   if (err < 0) {
-    fprintf(stderr, "Mixer %s load error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer %s load error: %s", alsa_card, snd_strerror(err));
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
@@ -103,7 +118,7 @@ int play_setvolume(unsigned char pct, char* alsa_card){
   }
 
   if (!found_master){
-    fprintf(stderr, "The 'Master' control was not found.\n");
+    snprintf(play_last_error, MAX_ERROR_LEN, "The 'Master' control was not found.");
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return -1;
@@ -111,7 +126,7 @@ int play_setvolume(unsigned char pct, char* alsa_card){
 
   if (snd_mixer_selem_has_playback_volume(elem)) {
     if ((err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max)) < 0){
-      fprintf(stderr, "Mixer playback range error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer playback range error: %s", alsa_card, snd_strerror(err));
       snd_mixer_detach(handle, alsa_card);
       snd_mixer_close(handle);
       return err;
@@ -120,7 +135,7 @@ int play_setvolume(unsigned char pct, char* alsa_card){
 
   val = (((long) pct)*(max-min)/100L);
   if ((err = snd_mixer_selem_set_playback_volume_all(elem, val)) < 0){
-    fprintf(stderr, "Mixer set playback volume error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer set playback volume error: %s", alsa_card, snd_strerror(err));
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
@@ -147,24 +162,26 @@ char play_getvolume(){
   long min, max, val;
   snd_mixer_selem_channel_id_t chan;
 
+  play_clear_last_error();
+
   if ((err = snd_mixer_open(&handle, 0)) < 0) {
-    fprintf(stderr, "Mixer %s open error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer %s open error: %s", alsa_card, snd_strerror(err));
     return err;
   }
   if (smixer_level == 0 && (err = snd_mixer_attach(handle, alsa_card)) < 0) {
-    fprintf(stderr, "Mixer attach %s error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer attach %s error: %s", alsa_card, snd_strerror(err));
     snd_mixer_close(handle);
     return err;
   }
   if ((err = snd_mixer_selem_register(handle, NULL, NULL)) < 0) {
-    fprintf(stderr, "Mixer register error: %s\n", snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer register error: %s", snd_strerror(err));
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
   }
   err = snd_mixer_load(handle);
   if (err < 0) {
-    fprintf(stderr, "Mixer %s load error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer %s load error: %s", alsa_card, snd_strerror(err));
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
@@ -181,7 +198,7 @@ char play_getvolume(){
   }
 
   if (!found_master){
-    fprintf(stderr, "The 'Master' control was not found.\n");
+    snprintf(play_last_error, MAX_ERROR_LEN, "The 'Master' control was not found.");
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return -1;
@@ -189,7 +206,7 @@ char play_getvolume(){
 
   if (snd_mixer_selem_has_playback_volume(elem)) {
     if ((err = snd_mixer_selem_get_playback_volume_range(elem, &min, &max)) < 0){
-      fprintf(stderr, "Mixer %s playback range error: %s\n", alsa_card, snd_strerror(err));
+      snprintf(play_last_error, MAX_ERROR_LEN, "Mixer %s playback range error: %s", alsa_card, snd_strerror(err));
       snd_mixer_detach(handle, alsa_card);
       snd_mixer_close(handle);
       return err;
@@ -202,7 +219,7 @@ char play_getvolume(){
       }
     }
     if (chan == SND_MIXER_SCHN_LAST){
-      fprintf(stderr, "No available channel found\n");
+      snprintf(play_last_error, MAX_ERROR_LEN, "No available channel found");
       snd_mixer_detach(handle, alsa_card);
       snd_mixer_close(handle);
       return err;
@@ -211,7 +228,7 @@ char play_getvolume(){
   }
 
   if ((err = snd_mixer_selem_get_playback_volume(elem, chan, &val)) < 0){
-    fprintf(stderr, "Mixer %s get playback volume error: %s\n", alsa_card, snd_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Mixer %s get playback volume error: %s", alsa_card, snd_strerror(err));
     snd_mixer_detach(handle, alsa_card);
     snd_mixer_close(handle);
     return err;
@@ -240,6 +257,8 @@ void play_play(char* filename){
   ao_sample_format format;
   int channels, encoding;
   long rate;
+
+  play_clear_last_error();
 
   /* initializations */
   driver = ao_default_driver_id();
@@ -277,6 +296,8 @@ play_reader_t* play_new_reader(char* filename){
   size_t done;
   int err;
 
+  play_clear_last_error();
+
   ao_device *dev;
 
   ao_sample_format format;
@@ -286,20 +307,20 @@ play_reader_t* play_new_reader(char* filename){
   /* initializations */
   mh = mpg123_new(NULL, &err);
   if (err == MPG123_ERR) {
-    fprintf(stderr, "Error creating mpg123 handle: %s\n", mpg123_plain_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Error creating mpg123 handle: %s", mpg123_plain_strerror(err));
     return NULL;
   }
 
   /* open the file and get the decoding format */
   if ((err = mpg123_open(mh, filename)) == MPG123_ERR) {
-    fprintf(stderr, "Error opening file %s for reading: %s\n", filename, mpg123_plain_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Error opening file %s for reading: %s", filename, mpg123_plain_strerror(err));
     mpg123_delete(mh);
     return NULL;
   }
 
   result = (play_reader_t*) malloc(sizeof(play_reader_t));
   if (! result ){
-    fprintf(stderr, "Allocating memory failed\n");
+    snprintf(play_last_error, MAX_ERROR_LEN, "Allocating memory failed");
     mpg123_delete(mh);
     return NULL;
   }
@@ -308,7 +329,7 @@ play_reader_t* play_new_reader(char* filename){
   result->buffer_size = mpg123_outblock(mh);
   result->buffer = (unsigned char*) malloc(result->buffer_size * sizeof(unsigned char));
   if (! result->buffer){
-    fprintf(stderr, "Allocating memory failed\n");
+    snprintf(play_last_error, MAX_ERROR_LEN, "Allocating memory failed");
     mpg123_delete(mh);
     free(result);
     return NULL;
@@ -334,13 +355,15 @@ size_t play_read(play_reader_t* reader) {
   size_t done = 0;
   int err;
 
+  play_clear_last_error();
+
   err = mpg123_read(reader->mh, reader->buffer, reader->buffer_size, &done);
   
   if (err == MPG123_OK) {
     errno = 0;
   }
   else {
-    fprintf(stderr, "mpg123 Read failed: %s\n", mpg123_plain_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "mpg123 Read failed: %s", mpg123_plain_strerror(err));
     errno = -1;
   }
 
@@ -351,7 +374,17 @@ size_t play_read(play_reader_t* reader) {
 Get the length of the mp3 in samples, or -1 on failure.
 */
 int play_length(play_reader_t* reader) {
-  return mpg123_length(reader->mh);
+  int err = 0;
+
+  play_clear_last_error();
+
+  err = mpg123_length(reader->mh);
+
+  if (err < 0) {
+    snprintf(play_last_error, MAX_ERROR_LEN, "mpg123 length failed: %s", mpg123_plain_strerror(err));
+  }
+
+  return err;
 }
 
 /*
@@ -369,10 +402,13 @@ struct mpg123_frameinfo play_getinfo(play_reader_t* reader) {
   struct mpg123_frameinfo rc;
   int err;
 
+  play_clear_last_error();
+
   err = mpg123_info(reader->mh, &rc);
   if (err == MPG123_OK) {
     errno = 0;
   } else {
+    snprintf(play_last_error, MAX_ERROR_LEN, "mpg123 get info failed: %s", mpg123_plain_strerror(err));
     errno = -1;
   }
   return rc;
@@ -386,22 +422,26 @@ double play_seconds_per_sample(play_reader_t* reader) {
   int spf;
   double d;
 
+  play_clear_last_error();
   errno = 0;
 
   if ( mpg123_scan(reader->mh) == MPG123_ERR) {
     errno = -1;
+    snprintf(play_last_error, MAX_ERROR_LEN, "mpg123 scan failed: %s", mpg123_strerror(reader->mh));
     return 0.0;
   }
   
   spf = mpg123_spf(reader->mh);
   if (spf <= 0) {
     errno = -1;
+    snprintf(play_last_error, MAX_ERROR_LEN, "mpg123 get samples-per-frame failed: %s", mpg123_strerror(reader->mh));
     return 0.0;
   }
   
   d = mpg123_tpf(reader->mh);
   if (d <= 0.0) {
     errno = -1;
+    snprintf(play_last_error, MAX_ERROR_LEN, "mpg123 get time-per-frame failed: %s", mpg123_strerror(reader->mh));
     return 0.0;
   }
 
@@ -411,8 +451,16 @@ double play_seconds_per_sample(play_reader_t* reader) {
 /*
 Seek.
 */
-void play_seek(play_reader_t* reader, int offset) {
-  mpg123_seek(reader->mh, offset, SEEK_SET);
+int play_seek(play_reader_t* reader, int offset) {
+  int err = 0;
+
+  play_clear_last_error();
+  
+  err = mpg123_seek(reader->mh, offset, SEEK_SET);
+  if (err < 0) {
+    snprintf(play_last_error, MAX_ERROR_LEN, "mpg123 seek failed: %s", mpg123_strerror(reader->mh));
+  }
+  return err;
 }
 
 /* Create a new writer that will write samples to the audio device. */
@@ -426,13 +474,15 @@ ao_device* play_new_writer(play_reader_t* reader) {
   int channels, encoding;
   long rate;
 
+  play_clear_last_error();
+
   /* initializations */
   driver = ao_default_driver_id();
 
   /* open the file and get the decoding format */
   mpg123_getformat(reader->mh, &rate, &channels, &encoding);
   if (err == MPG123_ERR) {
-    fprintf(stderr, "Error getting mp3 format: %s\n", mpg123_plain_strerror(err));
+    snprintf(play_last_error, MAX_ERROR_LEN, "Error getting mp3 format: %s", mpg123_plain_strerror(err));
     return NULL;
   }
 
@@ -451,8 +501,23 @@ void play_delete_writer(ao_device* writer) {
   ao_close(writer);
 }
 
-void play_write(ao_device* writer, unsigned char* buffer, size_t done) {
-  ao_play(writer, buffer, done);
+int play_write(ao_device* writer, unsigned char* buffer, size_t done) {
+  int err = 0;
+
+  play_clear_last_error();
+
+  err = ao_play(writer, buffer, done);
+
+  // In libao, an error result of 0 is failure.
+  if (err == 0) {
+    snprintf(play_last_error, MAX_ERROR_LEN, "ao_play failed");
+    err = -1;
+  }
+  else {
+    err = 0;
+  }
+
+  return err;
 }
 
 static void set_str_from_id3v2(char** dst, mpg123_string* src) {
