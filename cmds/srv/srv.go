@@ -682,6 +682,32 @@ func handleSignals() {
 	}
 }
 
+func findWwwDir() string {
+
+	locs := []string{"/usr/share/wwwmp3/www", "src/github.com/jeffwilliams/wwwmp3/www"}
+
+	for _, f := range locs {
+
+		fi, err := os.Stat(f)
+		if err != nil {
+			log.Info("The www root directory was not found at %v.", f)
+			continue
+		}
+
+		if !fi.Mode().IsDir() {
+			log.Info("The www root %v is not a directory.", f)
+			continue
+		}
+
+		log.Info("Using www root %v", f)
+		return f
+	}
+
+	log.Fatalf("The www root could not be located!")
+
+	return ""
+}
+
 func main() {
 	flag.Parse()
 
@@ -700,7 +726,7 @@ func main() {
 	// Open database
 	db, err = openDb(*dbflag)
 	if err != nil {
-		log.Fatalf("Error opening database: %v", err)
+		log.Fatalf("Error opening database %v: %v", *dbflag, err)
 		os.Exit(1)
 	}
 	defer db.Close()
@@ -718,7 +744,12 @@ func main() {
 	http.HandleFunc("/scan/", serveScan)
 	//http.Handle("/playerEvents", websocket.Handler(playerEvents))
 	http.HandleFunc("/playerEvents", serveWebsock)
-	http.Handle("/", http.FileServer(http.Dir("src/github.com/jeffwilliams/wwwmp3/www")))
+
+	if wwwDir := findWwwDir(); len(wwwDir) > 0 {
+		http.Handle("/", http.FileServer(http.Dir(wwwDir)))
+	} else {
+		os.Exit(1)
+	}
 
 	log.Notice("Listening on http://localhost:2001/")
 
