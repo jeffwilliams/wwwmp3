@@ -7,42 +7,6 @@ import (
 	"strconv"
 )
 
-type WebsockMsgType int
-
-const (
-	Offset WebsockMsgType = iota
-	State
-	Volume
-	Info
-)
-
-type WebsockMsg struct {
-	Type WebsockMsgType
-}
-
-type WebsockOffsetMsg struct {
-	WebsockMsg
-	Offset int
-}
-type WebsockStateMsg struct {
-	WebsockMsg
-	State string
-}
-
-type WebsockVolumeMsg struct {
-	WebsockMsg
-	Volume int
-}
-
-type WebsockInfoMsg struct {
-	WebsockMsg
-	Offset int
-	State  string
-	Volume int
-}
-
-//func MsgFromPlayerStatus(play.PlayerStatus struct {
-
 // JsonPlayerEvent extracts the information that event asserts has changed from the status
 // and returns it as a JSON message. For example, if the event is a VolumeChange, then the volume
 // is extracted and encoded as a JSON message.

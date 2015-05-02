@@ -520,39 +520,12 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 	)
 
 	if event.Type == play.StateChange {
-		if event.Data.(play.PlayerState) == play.Empty {
-			if repeatMode == RepeatAll {
-				// Re-enqueue this sucker
-				queue.Enqueue(recent.Held)
-			}
-
-			// Commit the mp3 that just finished to the recent list
-			recent.Commit()
-		}
-
 		s := player.GetStatus()
 		if event.Data.(play.PlayerState) == play.Paused || event.Data.(play.PlayerState) == play.Empty {
 			// If we just changed to Paused then we may have loaded a new song, and if we changed to
 			// Empty we have no song. In these cases send _all_ the information (including song metainfo).
-			if event.Data.(play.PlayerState) == play.Paused {
-				if len(s.Path) != 0 {
-					meta = findMp3ByPath(s.Path)
-					if meta == nil {
-						log.Error("Loaded mp3, but can't find metainformation for it...")
-					}
-				}
-				setMetainfo()
-			} else {
-				// Empty.
-				meta = nil
-			}
 			d, err = jsonFullStatus(s, meta, listQueue(queue), pathsToMetadatas(recent.Slice()), repeatMode)
 		} else {
-			if event.Data.(play.PlayerState) == play.Playing {
-				s := player.GetStatus()
-				// Hold the current mp3, and add it to the list when it's stopped.
-				recent.Hold(s.Path)
-			}
 			d, err = jsonPlayerEvent(event, nil)
 		}
 	} else if event.Type == play.QueueChange {
@@ -638,8 +611,39 @@ func setFileLogBackend(logfilePath string) error {
 }
 
 // Read events from the player and pass them to the tee.
-func pumpPlayerEvents() {
+// If the player events affect our internal state, change state based on the events
+// (If repeat mode is set to repeat all, re-enqueue completed songs)
+func handlePlayerEvents() {
 	for e := range player.Events {
+		if e.Type == play.StateChange {
+			if e.Data.(play.PlayerState) == play.Empty {
+				if repeatMode == RepeatAll {
+					// Re-enqueue this sucker
+					queue.Enqueue(recent.Held)
+				}
+				// Commit the mp3 that just finished to the recent list
+				recent.Commit()
+
+			} else if e.Data.(play.PlayerState) == play.Paused {
+				s := player.GetStatus()
+				// If we just changed to Paused then we may have loaded a new song.
+				if len(s.Path) != 0 {
+					meta = findMp3ByPath(s.Path)
+					if meta == nil {
+						log.Error("Loaded mp3, but can't find metainformation for it...")
+					}
+				}
+				setMetainfo()
+			} else if e.Data.(play.PlayerState) == play.Empty {
+				// If we changed to Empty we have no song.
+				meta = nil
+			} else if e.Data.(play.PlayerState) == play.Playing {
+				s := player.GetStatus()
+				// Hold the current mp3, and add it to the list when it's stopped.
+				recent.Hold(s.Path)
+			}
+		}
+
 		eventTee.In <- e
 	}
 }
@@ -829,7 +833,7 @@ func main() {
 	// Set up the play queue
 	queue = play.NewQueueWithEvents(player, adaptor())
 
-	go pumpPlayerEvents()
+	go handlePlayerEvents()
 
 	go handleSignals()
 
