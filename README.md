@@ -1,6 +1,6 @@
 # wwwmp3: A Web-based mp3 player
 
-wwwmp3 is a web-based mp3 player for Linux written in [Go](https://golang.org/). It could also be used as a simple Go library for playing mp3s. See the API documentation on [godoc](http://godoc.org/github.com/jeffwilliams/wwwmp3).
+An mp3 player for Linux with a Web frontend. Written in [Go](https://golang.org/). It can also be used as a simple Go library for playing mp3s. See the API documentation on [godoc](http://godoc.org/github.com/jeffwilliams/wwwmp3).
 
 ## Dependencies
 
