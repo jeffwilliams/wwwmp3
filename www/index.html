@@ -87,6 +87,11 @@
         font-size: 2em;
       }
 
+      .toggle_link {
+        color: black;
+        text-decoration: underline;
+      }
+
     </style>
     <title>MP3 Player</title>
   </head>
@@ -127,6 +132,11 @@
               <small>{{timePosition()}}/{{playingProp('duration')}}</small>
               <small>{{playingProp('bitrate')}}kbps</small>
               <small>{{playingProp('rate')}}</small>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-xs-12">
+              <button class="btn btn-primary btn-xs" ng-click="changeRepeatMode()" >{{repeatModeForDisplay()}}</button>
             </div>
           </div>
         </div>

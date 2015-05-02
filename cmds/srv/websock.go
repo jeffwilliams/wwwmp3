@@ -68,13 +68,14 @@ func jsonPlayerStatus(status play.PlayerStatus) ([]byte, error) {
 }
 
 // jsonFullStatus creates a JSON message that contains the player status and the meta information
-func jsonFullStatus(status play.PlayerStatus, meta map[string]string, queue []map[string]string, recent []map[string]string) ([]byte, error) {
+func jsonFullStatus(status play.PlayerStatus, meta map[string]string, queue []map[string]string, recent []map[string]string, repeatMode RepeatMode) ([]byte, error) {
 	a := struct {
 		play.PlayerStatus
-		Meta   map[string]string
-		Queue  []map[string]string
-		Recent []map[string]string
-	}{status, meta, queue, recent}
+		Meta       map[string]string
+		Queue      []map[string]string
+		Recent     []map[string]string
+		RepeatMode string
+	}{status, meta, queue, recent, repeatMode.String()}
 	return json.Marshal(a)
 }
 
@@ -94,10 +95,18 @@ func jsonScan(meta *scan.Metadata) ([]byte, error) {
 	return json.Marshal(a)
 }
 
-// jsonScan creates a JSON message with the recently played tracks.
+// jsonRecent creates a JSON message with the recently played tracks.
 func jsonRecent(recent []map[string]string) ([]byte, error) {
 	a := struct {
 		Recent []map[string]string
 	}{Recent: recent}
+	return json.Marshal(a)
+}
+
+// jsonRepeat creates a JSON message with the current repeat mode
+func jsonRepeat(repeatMode RepeatMode) ([]byte, error) {
+	a := struct {
+		RepeatMode string
+	}{RepeatMode: repeatMode.String()}
 	return json.Marshal(a)
 }

@@ -183,6 +183,9 @@ type getStatusCmd chan PlayerStatus
 // Internal command used by the Player
 type getInfoCmd chan *Info
 
+// Internal command used by the Player
+type setRepeatCmd bool
+
 type EventType int
 
 // Event represents events sent by the Player.
@@ -255,6 +258,9 @@ func NewPlayer() (p Player) {
 
 		var state PlayerState = Empty
 		var states [3]func()
+
+		// When we reach the end, should we start over?
+		var repeat bool = false
 
 		debugCmd := func(cmd interface{}) {
 			if debug {
@@ -470,6 +476,8 @@ func NewPlayer() (p Player) {
 					cmd.(getInfoCmd) <- nil
 				}
 				return true
+			case setRepeatCmd:
+				repeat = bool(cmd.(setRepeatCmd))
 			}
 			return false
 		}
@@ -565,8 +573,13 @@ func NewPlayer() (p Player) {
 				n, err := C.play_read(reader)
 				if err != nil {
 					// We're done
-					stop()
-					break
+					if repeat {
+						seek(0)
+						continue
+					} else {
+						stop()
+						break
+					}
 				}
 
 				rc := C.play_write(writer, reader.buffer, n)
@@ -675,4 +688,9 @@ func (p Player) GetInfo() *Info {
 	p.cmds <- getInfoCmd(cmd)
 
 	return <-cmd
+}
+
+// SetRepeat sets whether the track should be repeated when we reach the end or not.
+func (p Player) SetRepeat(r bool) {
+	p.cmds <- setRepeatCmd(r)
 }

@@ -15,6 +15,8 @@ import (
 	"github.com/jeffwilliams/wwwmp3/scan"
 	"github.com/jeffwilliams/wwwmp3/tee"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,12 +32,9 @@ const (
 )
 
 var (
-	helpFlag     = flag.Bool("help", false, "Print help")
-	dbflag       = flag.String("db", "mp3.db", "database containing mp3 info")
-	allVolFlag   = flag.Bool("allvol", false, "If set to true, changing the volume affects all ALSA cards, not just the default.")
-	logfileFlag  = flag.String("log", "", "File to write log messages to. Defaults to stdout if not specified.")
-	logLevelFlag = flag.String("loglevel", "DEBUG", "Minimum severity of log messages to write. One of DEBUG, INFO, NOTICE, WARNING, ERROR, or CRITICAL")
-	db           scan.Mp3Db
+	helpFlag      = pflag.BoolP("help", "h", false, "Print help then exit.")
+	genConfigFlag = pflag.BoolP("gen", "g", false, "Generate a sample configuration file in the current directory then exit.")
+	db            scan.Mp3Db
 
 	// The mp3 player
 	player play.Player = play.NewPlayer()
@@ -67,8 +66,15 @@ var (
 
 	// scanning: Are we currently scanning for mp3s?
 	scanning bool = false
+
 	// scanMutex protects `scanning`.
 	scanMutex sync.Mutex
+
+	// Current repeat mode of the player
+	repeatMode RepeatMode = DontRepeat
+
+	// When the repeatMode is changed, this tee is written to.
+	repeatModeTee = tee.New()
 )
 
 // queryVal returns the first value for the GET query variable with name `key`.
@@ -259,11 +265,7 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(400)
 				w.Write([]byte("400 Bad Request: invalid numeric volume"))
 			} else {
-				if *allVolFlag {
-					player.SetVolumeAll(byte(v))
-				} else {
-					player.SetVolume(byte(v))
-				}
+				player.SetVolume(byte(v))
 			}
 		} else if s := queryVal(r, "seek"); len(s) > 0 {
 			log.Notice("servePlayer: seek %s", s)
@@ -337,6 +339,19 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 		} else if _, ok := r.URL.Query()["recent.list"]; ok {
 			enc := json.NewEncoder(w)
 			enc.Encode(pathsToMetadatas(recent.Slice()))
+		} else if v := queryVal(r, "set_repeat_mode"); len(v) > 0 {
+			r, err := ParseRepeatMode(v)
+			if err != nil {
+				log.Warning("servePlayer: set_repeat_mode: %v", err)
+				return
+			}
+			repeatMode = r
+			if repeatMode == RepeatOne {
+				player.SetRepeat(true)
+			} else {
+				player.SetRepeat(false)
+			}
+			repeatModeTee.In <- struct{}{}
 		}
 
 	}
@@ -408,7 +423,7 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	defer log.Notice("Websocket handler for %s exiting", ws.RemoteAddr())
 
 	// Send the full status to the browser
-	d, err := jsonFullStatus(player.GetStatus(), meta, listQueue(queue), pathsToMetadatas(recent.Slice()))
+	d, err := jsonFullStatus(player.GetStatus(), meta, listQueue(queue), pathsToMetadatas(recent.Slice()), repeatMode)
 	if err != nil {
 		log.Error("Error encoding Player event as JSON: %v", err)
 		return
@@ -429,6 +444,10 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	scanEvents := make(chan interface{})
 	scanTee.Add(scanEvents)
 	defer scanTee.Del(scanEvents)
+
+	repeatModeChanged := make(chan interface{})
+	repeatModeTee.Add(repeatModeChanged)
+	defer repeatModeTee.Del(repeatModeChanged)
 
 	//ws.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
 
@@ -467,6 +486,19 @@ loop:
 				// Client is probably gone. Close our channel and exit.
 				break loop
 			}
+		case _ = <-repeatModeChanged:
+			m, err := jsonRepeat(repeatMode)
+			if err != nil {
+				log.Error("Error encoding metadata as JSON: %v", err)
+				// Hopefully the next one works...
+				continue loop
+			}
+			err = websockWrite(ws, m)
+			if err != nil {
+				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
+				// Client is probably gone. Close our channel and exit.
+				break loop
+			}
 		}
 	}
 }
@@ -489,6 +521,11 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 
 	if event.Type == play.StateChange {
 		if event.Data.(play.PlayerState) == play.Empty {
+			if repeatMode == RepeatAll {
+				// Re-enqueue this sucker
+				queue.Enqueue(recent.Held)
+			}
+
 			// Commit the mp3 that just finished to the recent list
 			recent.Commit()
 		}
@@ -509,7 +546,7 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 				// Empty.
 				meta = nil
 			}
-			d, err = jsonFullStatus(s, meta, listQueue(queue), pathsToMetadatas(recent.Slice()))
+			d, err = jsonFullStatus(s, meta, listQueue(queue), pathsToMetadatas(recent.Slice()), repeatMode)
 		} else {
 			if event.Data.(play.PlayerState) == play.Playing {
 				s := player.GetStatus()
@@ -558,8 +595,8 @@ func openDb(path string) (mp3db scan.Mp3Db, err error) {
 func initLogging() {
 	wasSetup := false
 
-	if len(*logfileFlag) != 0 {
-		err := setFileLogBackend(*logfileFlag)
+	if len(viper.GetString("log")) != 0 {
+		err := setFileLogBackend(viper.GetString("log"))
 		if err == nil {
 			var format = logging.MustStringFormatter(
 				"%{time:2006-01-02 15:04:05.000000} %{module}: %{level:.4s} %{color:reset} %{message}",
@@ -577,11 +614,11 @@ func initLogging() {
 		logging.SetFormatter(format)
 	}
 
-	level, levelErr := logging.LogLevel(*logLevelFlag)
+	level, levelErr := logging.LogLevel(viper.GetString("loglevel"))
 	if levelErr == nil {
 		logging.SetLevel(level, "")
 	} else {
-		log.Error("Setting logging level to %v failed: %v", *logLevelFlag, levelErr)
+		log.Error("Setting logging level to %v failed: %v", viper.GetString("loglevel"), levelErr)
 	}
 }
 
@@ -632,7 +669,7 @@ func scanDirs(dirs []string) {
 	// Since we are running in a separate goroutine we need our own connection to the database:
 	// "Multi-thread. In this mode, SQLite can be safely used by multiple threads provided that
 	// no single database connection is used simultaneously in two or more threads."
-	db, err := openDb(*dbflag)
+	db, err := openDb(viper.GetString("db"))
 	if err != nil {
 		log.Fatalf("Error opening scanner connection to database: %v", err)
 		os.Exit(1)
@@ -665,7 +702,7 @@ func showHelp() {
 	fmt.Println("The `dir` arguments are directories to scan for mp3s when a scan request is made.")
 	fmt.Println("")
 	fmt.Println("Options: ")
-	flag.PrintDefaults()
+	pflag.PrintDefaults()
 }
 
 func handleSignals() {
@@ -675,8 +712,8 @@ func handleSignals() {
 
 	for _ = range c {
 		// Reopen the logfile. I am assuming that the go-logging package is safe to be called from multiple goroutines.
-		if len(*logfileFlag) != 0 {
-			setFileLogBackend(*logfileFlag)
+		if len(viper.GetString("log")) != 0 {
+			setFileLogBackend(viper.GetString("log"))
 			log.Info("Reopened logfile on HUP")
 		}
 	}
@@ -684,7 +721,7 @@ func handleSignals() {
 
 func findWwwDir() string {
 
-	locs := []string{"/usr/share/wwwmp3/www", "src/github.com/jeffwilliams/wwwmp3/www"}
+	locs := []string{"www", "src/github.com/jeffwilliams/wwwmp3/www", "/usr/share/wwwmp3/www"}
 
 	for _, f := range locs {
 
@@ -708,11 +745,68 @@ func findWwwDir() string {
 	return ""
 }
 
+func initViper() {
+	pflag.IntP("port", "p", 2001, "TCP Port to listen on")
+	pflag.StringP("db", "d", "", "Database containing mp3 info")
+	pflag.StringP("log", "l", "", "File to write log messages to. Defaults to stdout if not specified.")
+	pflag.StringP("loglevel", "e", "", "Minimum severity of log messages to write. One of DEBUG, INFO, NOTICE, WARNING, ERROR, or CRITICAL")
+
+	viper.BindPFlags(pflag.CommandLine)
+
+	viper.SetDefault("db", "mp3.db")
+	viper.SetDefault("port", 2001)
+	viper.SetDefault("log", "")
+	viper.SetDefault("loglevel", "DEBUG")
+
+	// Config file basename. Actual config file is config.yaml, .toml, etc.
+	viper.SetConfigName("config")
+	viper.AddConfigPath(".")
+	viper.AddConfigPath("/etc/wwwmp3/")
+
+}
+
+func genConfig() {
+	const name = "config.yaml"
+
+	if _, err := os.Stat(name); err == nil {
+		fmt.Printf("A file named %v already exists in the current directory\n", name)
+		return
+	}
+
+	file, err := os.Create(name)
+	if err != nil {
+		fmt.Println("Generating config file failed:", err)
+		return
+	}
+
+	fmt.Fprintln(file, "## TCP Port for the server to listen on")
+	fmt.Fprintln(file, "port: 2001")
+	fmt.Fprintln(file, "")
+	fmt.Fprintln(file, "## Path to the sqlite3 database that contains the mp3 information.")
+	fmt.Fprintln(file, "db: 'mp3.db'")
+	fmt.Fprintln(file, "")
+	fmt.Fprintln(file, "## File to write logs to. If this is not specified, stdout is used.")
+	fmt.Fprintln(file, "# log: '/var/log/wwwmp3/wwwmp3.log'")
+	fmt.Fprintln(file, "")
+	fmt.Fprintln(file, "## Minimum logging level to print. Must be one of DEBUG, INFO, NOTICE, WARNING, ERROR, or CRITICAL")
+	fmt.Fprintln(file, "loglevel: 'DEBUG'")
+	fmt.Fprintln(file, "")
+
+	file.Close()
+
+	fmt.Println("Generated config file", name)
+}
+
 func main() {
-	flag.Parse()
+	initViper()
+	pflag.Parse()
+	viper.ReadInConfig()
 
 	if *helpFlag {
 		showHelp()
+		os.Exit(0)
+	} else if *genConfigFlag {
+		genConfig()
 		os.Exit(0)
 	}
 
@@ -720,13 +814,14 @@ func main() {
 
 	initLogging()
 	log = logging.MustGetLogger("server")
+	log.Info("Used config file %v", viper.ConfigFileUsed())
 
 	var err error
 
 	// Open database
-	db, err = openDb(*dbflag)
+	db, err = openDb(viper.GetString("db"))
 	if err != nil {
-		log.Fatalf("Error opening database %v: %v", *dbflag, err)
+		log.Fatalf("Error opening database %v: %v", viper.GetString("db"), err)
 		os.Exit(1)
 	}
 	defer db.Close()
@@ -751,9 +846,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Notice("Listening on http://localhost:2001/")
+	addr := ":" + viper.GetString("port")
+	log.Notice("Listening on %v", addr)
 
-	err = http.ListenAndServe(":2001", nil)
+	err = http.ListenAndServe(addr, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe failed: %v", err)
 		os.Exit(1)

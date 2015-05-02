@@ -283,6 +283,9 @@ function MainCtrl($scope, $http, $timeout){
 
   $scope.scannedMp3 = null;
 
+  // Repeat mode is one of: DontRepeat, RepeatOne, or RepeatAll
+  $scope.repeatMode = "DontRepeat";
+
   var fixSelection = function(items, selection, setter){
     if( items.length == 0 ) {
       if ( selection != "" ) {
@@ -392,6 +395,12 @@ function MainCtrl($scope, $http, $timeout){
     });
   }
 
+  var handlePlayerRepeatModeEvent = function(repeat){
+    $timeout(function(){
+      $scope.repeatMode = repeat;
+    });
+  }
+
   var playerEventsConnect = function(){
     // Build the websocket URL based on the current window location.
     var loc = window.location, new_uri;
@@ -424,6 +433,8 @@ function MainCtrl($scope, $http, $timeout){
         handlePlayerQueueChangeEvent(e["Queue"])
       if("Recent" in e)
         handlePlayerRecentChangeEvent(e["Recent"])
+      if("RepeatMode" in e)
+        handlePlayerRepeatModeEvent(e["RepeatMode"])
     }
 
     $scope.playerEventsWebsock.onopen = function(event){
@@ -791,6 +802,19 @@ function MainCtrl($scope, $http, $timeout){
       });
   }
 
+  $scope.sendPlayerSetRepeatModeRequest = function(mode){
+    var parms = {
+      'set_repeat_mode': mode
+    }
+
+    $http.get("/player", {'params' : parms}).
+      success(function(data,status,headers,config){
+      }).
+      error(function(data,status,headers,config){
+        console.log("Error: setting repeat mode failed: " + data);
+      });
+  }
+
   /**************** END PLAYER REQUESTS ******************/
   
   // Initial data load
@@ -928,6 +952,30 @@ function MainCtrl($scope, $http, $timeout){
       return secondsToTime($scope.position*$scope.playing.sec_per_sample)
     } else {
       return "";
+    }
+  }
+
+  $scope.changeRepeatMode = function() {
+    console.log("changeRepeatMode: called");
+    if ($scope.repeatMode == "DontRepeat") {
+      $scope.sendPlayerSetRepeatModeRequest("RepeatOne")
+      //$scope.repeatMode = "RepeatOne";
+    } else if ($scope.repeatMode == "RepeatOne") {
+      $scope.sendPlayerSetRepeatModeRequest("RepeatAll")
+      //$scope.repeatMode = "RepeatAll";
+    } else if ($scope.repeatMode == "RepeatAll") {
+      $scope.sendPlayerSetRepeatModeRequest("DontRepeat")
+      //$scope.repeatMode = "DontRepeat";
+    }
+  }
+
+  $scope.repeatModeForDisplay = function() {
+    if ($scope.repeatMode == "DontRepeat") {
+      return "Don't Repeat";
+    } else if ($scope.repeatMode == "RepeatOne") {
+      return "Repeat One";
+    } else if ($scope.repeatMode == "RepeatAll") {
+      return "Repeat All";
     }
   }
 
