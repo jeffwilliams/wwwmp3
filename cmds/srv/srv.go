@@ -238,7 +238,7 @@ func queueElemsToMetadatas(list []play.QueueElem) (result []map[string]string) {
 				"path":   elem.Filename,
 			}
 		}
-    m["queueId"] = strconv.FormatUint(uint64(elem.Id), 10)
+		m["queueId"] = strconv.FormatUint(uint64(elem.Id), 10)
 		result = append(result, m)
 	}
 	return
@@ -252,24 +252,23 @@ func listQueue(queue play.Queue) []map[string]string {
 
 // Perform functions on the mp3 player like play and pause.
 func servePlayer(w http.ResponseWriter, r *http.Request) {
+	log.Notice("servePlayer: called")
+
 	if r.Method == "GET" {
-		if v := queryVal(r, "enqueue"); len(v) > 0 {
-			log.Notice("servePlayer: enqueue")
-			queue.Enqueue(v)
-		} else if _, ok := r.URL.Query()["play"]; ok {
+		if r.URL.Path == "/player/play" {
 			log.Notice("servePlayer: play")
 			err := player.Play()
 			if err != nil {
 				w.WriteHeader(500)
 				w.Write([]byte(err.Error()))
 			}
-		} else if _, ok := r.URL.Query()["pause"]; ok {
+		} else if r.URL.Path == "/player/pause" {
 			log.Notice("servePlayer: pause")
 			player.Pause()
-		} else if _, ok := r.URL.Query()["stop"]; ok {
+		} else if r.URL.Path == "/player/stop" {
 			log.Notice("servePlayer: stop")
 			player.Stop()
-		} else if _, ok := r.URL.Query()["getvolume"]; ok {
+		} else if r.URL.Path == "/player/volume" {
 			v, err := play.GetVolume()
 			if err != nil {
 				log.Error("%v", err)
@@ -278,93 +277,139 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte(strconv.Itoa(int(v))))
 			w.Write([]byte("}"))
 			log.Notice("servePlayer: getvolume: returning %d", int(v))
-		} else if s := queryVal(r, "setvolume"); len(s) > 0 {
-			log.Notice("servePlayer: setvolume %s", s)
-			v, err := strconv.Atoi(s)
+		}
+
+	} else if r.Method == "POST" {
+		decoder := (*json.Decoder)(nil)
+		if r.Body != nil {
+			decoder = json.NewDecoder(r.Body)
+		}
+
+		if r.URL.Path == "/player/queue.enqueue" {
+			log.Notice("servePlayer: enqueue")
+
+			req := struct {
+				File string
+			}{}
+
+			err := decoder.Decode(&req)
 			if err != nil {
+				log.Error("servePlayer: decoding request failed: %v", err)
 				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid numeric volume"))
-			} else {
-				player.SetVolume(byte(v))
-			}
-		} else if s := queryVal(r, "seek"); len(s) > 0 {
-			log.Notice("servePlayer: seek %s", s)
-			v, err := strconv.Atoi(s)
-			if err != nil {
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid numeric offset"))
-			} else {
-				player.Seek(v)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
+				return
 			}
 
-		} else if _, ok := r.URL.Query()["queue.list"]; ok {
-			enc := json.NewEncoder(w)
-			enc.Encode(listQueue(queue))
-		} else if _, ok := r.URL.Query()["queue.move"]; ok {
+			queue.Enqueue(req.File)
+		} else if r.URL.Path == "/player/queue.move" {
+
+			if r.Body == nil {
+				log.Error("servePlayer: /player/queue.move posted with nil body.")
+				return
+			}
+
+			req := struct {
+				Indexes []int
+				Delta   int
+			}{}
+
+			err := decoder.Decode(&req)
+			if err != nil {
+				log.Error("servePlayer: decoding request failed: %v", err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
+				return
+			}
+
 			log.Notice("servePlayer: queue.move started")
-			s := queryVal(r, "index")
-			if len(s) == 0 {
-				log.Warning("servePlayer: queue.move: request contained no 'index'")
-				return
-			}
-			i, err := strconv.Atoi(s)
-			if err != nil {
-				log.Warning("servePlayer: queue.move: index was not an integer: %v", err)
-				return
-			}
-
-			s = queryVal(r, "delta")
-			if len(s) == 0 {
-				log.Warning("servePlayer: queue.move: request contained no 'delta'")
-				return
-			}
-			d, err := strconv.Atoi(s)
-			if err != nil {
-				log.Warning("servePlayer: queue.move: delta was not an integer: %v", err)
-				return
-			}
-
-			queue.Move(i, d)
+			queue.Move(req.Indexes, req.Delta)
 			log.Notice("servePlayer: queue.move completed")
-		} else if _, ok := r.URL.Query()["queue.move_to_top"]; ok {
+		} else if r.URL.Path == "/player/queue.move_to_top" {
 			log.Notice("servePlayer: queue.move_to_top started")
-			s := queryVal(r, "index")
-			if len(s) == 0 {
-				log.Warning("servePlayer: queue.move: request contained no 'index'")
-				return
-			}
-			i, err := strconv.Atoi(s)
+
+			req := struct {
+				Indexes []int
+			}{}
+
+			err := decoder.Decode(&req)
 			if err != nil {
-				log.Warning("servePlayer: queue.move: index was not an integer: %v", err)
+				log.Error("servePlayer: decoding request failed: %v", err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
 				return
 			}
 
-			queue.MoveToTop(i)
+			queue.MoveToTop(req.Indexes)
 			log.Notice("servePlayer: queue.move_to_top completed")
-		} else if _, ok := r.URL.Query()["queue.remove"]; ok {
-			s := queryVal(r, "index")
-			if len(s) == 0 {
-				log.Warning("servePlayer: queue.remove: request contained no 'index'")
-				return
-			}
-			i, err := strconv.Atoi(s)
+		} else if r.URL.Path == "/player/queue.remove" {
+			log.Notice("servePlayer: queue.remove started")
+
+			req := struct {
+				Indexes []int
+			}{}
+
+			err := decoder.Decode(&req)
 			if err != nil {
-				log.Warning("servePlayer: queue.remove: index was not an integer: %v", err)
+				log.Error("servePlayer: decoding request failed: %v", err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
 				return
 			}
 
-			queue.Remove(i)
-		} else if _, ok := r.URL.Query()["queue.clear"]; ok {
-			queue.Clear()
-		} else if _, ok := r.URL.Query()["recent.list"]; ok {
-			enc := json.NewEncoder(w)
-			enc.Encode(pathsToMetadatas(recent.Slice()))
-		} else if v := queryVal(r, "set_repeat_mode"); len(v) > 0 {
-			r, err := ParseRepeatMode(v)
+			queue.Remove(req.Indexes)
+			log.Notice("servePlayer: queue.remove completed")
+		} else if r.URL.Path == "/player/volume" {
+
+			req := struct {
+				Volume int
+			}{}
+
+			err := decoder.Decode(&req)
+			if err != nil {
+				log.Error("servePlayer: decoding request failed: %v", err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
+				return
+			}
+
+			log.Notice("servePlayer: setvolume %v", req.Volume)
+			player.SetVolume(byte(req.Volume))
+		} else if r.URL.Path == "/player/seek" {
+			req := struct {
+				Seek int
+			}{}
+
+			err := decoder.Decode(&req)
+			if err != nil {
+				log.Error("servePlayer: decoding request failed: %v", err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
+				return
+			}
+
+			log.Notice("servePlayer: seek %v", req.Seek)
+			player.Seek(req.Seek)
+		} else if r.URL.Path == "/player/repeat_mode" {
+			req := struct {
+				Mode string
+			}{}
+
+			err := decoder.Decode(&req)
+			if err != nil {
+				log.Error("servePlayer: decoding request failed: %v", err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
+				return
+			}
+
+			r, err := ParseRepeatMode(req.Mode)
 			if err != nil {
 				log.Warning("servePlayer: set_repeat_mode: %v", err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: Bad repeat mode"))
 				return
 			}
+
 			repeatMode = r
 			if repeatMode == RepeatOne {
 				player.SetRepeat(true)
@@ -373,8 +418,8 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			}
 			repeatModeTee.In <- struct{}{}
 		}
-
 	}
+
 }
 
 // Perform functions related to mp3 scanning
@@ -859,7 +904,7 @@ func main() {
 
 	// Setup http server
 	http.HandleFunc("/songmeta", serveMeta)
-	http.HandleFunc("/player", servePlayer)
+	http.HandleFunc("/player/", servePlayer)
 	http.HandleFunc("/scan/", serveScan)
 	//http.Handle("/playerEvents", websocket.Handler(playerEvents))
 	http.HandleFunc("/playerEvents", serveWebsock)

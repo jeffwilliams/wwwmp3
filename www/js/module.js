@@ -640,11 +640,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   var playerPlayMp3 = function(){
-    var parms = {
-      'play': 'play'
-    }
-
-    $http.get("/player", {'params' : parms}).
+    $http.get("/player/play").
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -654,10 +650,10 @@ function MainCtrl($scope, $http, $timeout){
 
   var playerQueueMp3 = function(path){
     var parms = {
-      'enqueue': path
+      'file': path
     }
 
-    $http.get("/player", {'params' : parms}).
+    $http.post("/player/queue.enqueue", parms).
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -666,11 +662,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   var playerPauseMp3 = function(){
-    var parms = {
-      'pause': 'pause'
-    }
-
-    $http.get("/player", {'params' : parms}).
+    $http.get("/player/pause").
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -683,7 +675,7 @@ function MainCtrl($scope, $http, $timeout){
       'stop': 'stop'
     }
 
-    $http.get("/player", {'params' : parms}).
+    $http.get("/player/stop").
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -692,7 +684,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   var playerGetVolume = function(){
-    $http.get("/player", {'params' : {"getvolume":  "getvolume"}}).
+    $http.get("/player/volume").
       success(function(data,status,headers,config){
         $scope.volume = data.volume
       }).
@@ -701,14 +693,13 @@ function MainCtrl($scope, $http, $timeout){
       });
   }
 
-  var playerMoveInQueue = function(index, delta){
+  var playerMoveInQueue = function(indexes, delta){
     var parms = {
-      'queue.move': 'y',
-      'index': index,
+      'indexes': indexes,
       'delta': delta
     }
 
-    $http.get("/player", {'params' : parms}).
+    $http.post("/player/queue.move", parms).
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -716,13 +707,12 @@ function MainCtrl($scope, $http, $timeout){
       });
   }
 
-  var playerMoveToTopInQueue = function(index, delta){
+  var playerMoveToTopInQueue = function(indexes){
     var parms = {
-      'queue.move_to_top': 'y',
-      'index': index
+      'indexes': indexes
     }
 
-    $http.get("/player", {'params' : parms}).
+    $http.post("/player/queue.move_to_top", parms).
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -730,13 +720,12 @@ function MainCtrl($scope, $http, $timeout){
       });
   }
 
-  var playerRemoveFromQueue = function(index){
+  var playerRemoveFromQueue = function(indexes){
     var parms = {
-      'queue.remove': 'y',
-      'index': index
+      'indexes': indexes
     }
 
-    $http.get("/player", {'params' : parms}).
+    $http.post("/player/queue.remove", parms).
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -759,7 +748,11 @@ function MainCtrl($scope, $http, $timeout){
 
   var volumeThrottler = new Throttler($timeout, 80, 
     function(){
-      $http.get("/player", {'params' : {"setvolume": $scope.volume}}).
+      var parms = {
+        "volume": parseInt($scope.volume)
+      }
+
+      $http.post("/player/volume", parms).
         success(function(data,status,headers,config){
         }).
         error(function(data,status,headers,config){
@@ -775,7 +768,7 @@ function MainCtrl($scope, $http, $timeout){
 
   var sendPlayerSeekRequest = function(){
     var parms = {
-      'seek': $scope.position
+      'seek': parseInt($scope.position)
     }
 
     // Mark that we are seeking to a specific position so that 
@@ -785,7 +778,7 @@ function MainCtrl($scope, $http, $timeout){
     $scope.seekingToPosition = $scope.position;
     $scope.seekedAt = (new Date()).getTime();
 
-    $http.get("/player", {'params' : parms}).
+    $http.post("/player/seek", parms).
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -811,10 +804,10 @@ function MainCtrl($scope, $http, $timeout){
 
   $scope.sendPlayerSetRepeatModeRequest = function(mode){
     var parms = {
-      'set_repeat_mode': mode
+      'mode': mode
     }
 
-    $http.get("/player", {'params' : parms}).
+    $http.post("/player/repeat_mode", parms).
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){
@@ -883,19 +876,6 @@ function MainCtrl($scope, $http, $timeout){
       console.log("$scope.addSelectedToPlayQueue called. song title = " + $scope.song.title);
       playerQueueMp3($scope.song.path);
     }
-
-  }
-
-  $scope.removeFromPlayQueue = function(index) {
-    playerRemoveFromQueue(index);
-  }
-
-  $scope.moveInPlayQueue = function(index,delta){
-    playerMoveInQueue(index, delta);
-  }
-
-  $scope.moveToTopInPlayQueue = function(index){
-    playerMoveToTopInQueue(index);
   }
 
   $scope.clearPlayQueue = function() {
@@ -903,19 +883,13 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   $scope.playQueueMoveClicked = function(delta) {
-    for(var i = 0; i < $scope.playQueue.length; i++) {
-      if($scope.selectionListIsSelected($scope.playQueue, i)) {
-        $scope.moveInPlayQueue(i, delta);
-      }
-    }
+    var indexes = $scope.selectionListSelectedIndexes($scope.playQueue);
+    playerMoveInQueue(indexes, delta);
   }
 
   $scope.playQueueMoveTop = function() {
-    for(var i = 0; i < $scope.playQueue.length; i++) {
-      if($scope.selectionListIsSelected($scope.playQueue, i)) {
-        $scope.moveToTopInPlayQueue(i);
-      }
-    }
+    var indexes = $scope.selectionListSelectedIndexes($scope.playQueue);
+    playerMoveToTopInQueue(indexes);
   }
 
   $scope.playQueueSelectNone = function() {
@@ -935,11 +909,8 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   $scope.playQueueRemoveClicked = function() {
-    for(var i = $scope.playQueue.length-1; i >= 0; i--) {
-      if($scope.selectionListIsSelected($scope.playQueue, i)) {
-        $scope.removeFromPlayQueue(i);
-      }
-    }
+    var indexes = $scope.selectionListSelectedIndexes($scope.playQueue);
+    playerRemoveFromQueue(indexes);
   }
   /**************** END PLAY QUEUE ******************/
 
@@ -1040,6 +1011,16 @@ function MainCtrl($scope, $http, $timeout){
         newarray[i].selectionListSelected = true;
       }
     }
+  }
+
+  $scope.selectionListSelectedIndexes = function(array) {
+    var indexes = [];
+    for(var i = 0; i < array.length; i++) {
+      if($scope.selectionListIsSelected(array, i)) {
+        indexes.push(i);
+      }
+    }
+    return indexes;
   }
 
 

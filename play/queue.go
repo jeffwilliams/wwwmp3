@@ -1,6 +1,9 @@
 package play
 
-import "container/list"
+import (
+	"container/list"
+	"sort"
+)
 
 type queueCmdType int
 
@@ -11,18 +14,31 @@ const (
 	Clear
 )
 
+// Sort ints
+type Asc []int
+
+func (a Asc) Len() int           { return len(a) }
+func (a Asc) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a Asc) Less(i, j int) bool { return a[i] < a[j] }
+
+type Desc []int
+
+func (a Desc) Len() int           { return len(a) }
+func (a Desc) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a Desc) Less(i, j int) bool { return a[i] > a[j] }
+
 type queueCmd struct {
-	Type  queueCmdType
-	Index int
-	Delta int
+	Type    queueCmdType
+	Indexes []int
+	Delta   int
 }
 
 // QueueElem is an element in the play queue.
 type QueueElem struct {
-  Filename string
-  // A unique id for the element in the queue. This can be used to identify elements
-  // after the queue has been modified (i.e. if items have been moved).
-  Id uint32
+	Filename string
+	// A unique id for the element in the queue. This can be used to identify elements
+	// after the queue has been modified (i.e. if items have been moved).
+	Id uint32
 }
 
 // Queue implements a queue of metadata for a player. Items from the queue
@@ -33,7 +49,7 @@ type Queue struct {
 	enqueue chan string
 	list    chan chan []QueueElem
 	modify  chan queueCmd
-  nextId  uint32
+	nextId  uint32
 }
 
 func NewQueue(player Player) Queue {
@@ -46,7 +62,7 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 		enqueue: make(chan string),
 		list:    make(chan chan []QueueElem),
 		modify:  make(chan queueCmd),
-    nextId:  0,
+		nextId:  0,
 	}
 
 	nth := func(list *list.List, n int) *list.Element {
@@ -88,43 +104,63 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 		}
 	}
 
-	move := func(index, delta int) {
+	move := func(indexes []int, delta int) {
 		if delta < 0 {
 			delta = -1
+			sort.Sort(Asc(indexes))
 		} else if delta > 0 {
-			delta = 1
+			sort.Sort(Desc(indexes))
 		}
 
-		if index < 1 && delta == -1 || index > q.files.Len()-2 && delta == 1 {
-			return
-		}
+		for _, index := range indexes {
 
-		e := nth(q.files, index)
+			if index < 1 && delta == -1 || index > q.files.Len()-2 && delta == 1 {
+				continue
+			}
 
-		if delta < 0 {
-			p := e.Prev()
-			v := q.files.Remove(e)
-			q.files.InsertBefore(v, p)
-		} else {
-			n := e.Next()
-			v := q.files.Remove(e)
-			q.files.InsertAfter(v, n)
+			e := nth(q.files, index)
+
+			if delta < 0 {
+				p := e.Prev()
+				v := q.files.Remove(e)
+				q.files.InsertBefore(v, p)
+			} else {
+				n := e.Next()
+				v := q.files.Remove(e)
+				q.files.InsertAfter(v, n)
+			}
 		}
 	}
 
-	moveToTop := func(index int) {
-		e := nth(q.files, index)
-		v := q.files.Remove(e)
-		q.files.PushFront(v)
+	moveToTop := func(indexes []int) {
+		sort.Sort(Desc(indexes))
+
+		mod := 0
+		for _, index := range indexes {
+			i := index + mod
+			e := nth(q.files, i)
+			v := q.files.Remove(e)
+			q.files.PushFront(v)
+			mod += 1
+		}
 	}
 
-	remove := func(index int) {
-		if index < 0 || index > q.files.Len()-1 {
-			return
-		}
+	remove := func(indexes []int) {
+		sort.Sort(Asc(indexes))
 
-		e := nth(q.files, index)
-		q.files.Remove(e)
+		mod := 0
+		for _, index := range indexes {
+
+			i := index + mod
+
+			if i < 0 || i > q.files.Len()-1 {
+				return
+			}
+
+			e := nth(q.files, i)
+			q.files.Remove(e)
+			mod -= 1
+		}
 	}
 
 	clear := func() {
@@ -135,11 +171,11 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 
 	modify := func(cmd queueCmd) {
 		if cmd.Type == Move {
-			move(cmd.Index, cmd.Delta)
+			move(cmd.Indexes, cmd.Delta)
 		} else if cmd.Type == MoveToTop {
-			moveToTop(cmd.Index)
+			moveToTop(cmd.Indexes)
 		} else if cmd.Type == Remove {
-			remove(cmd.Index)
+			remove(cmd.Indexes)
 		} else if cmd.Type == Clear {
 			clear()
 		}
@@ -159,7 +195,7 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 				c <- a
 			case f := <-q.enqueue:
 				q.files.PushBack(QueueElem{f, q.nextId})
-        q.nextId += 1
+				q.nextId += 1
 				addToPlayer()
 				sendEvent(Event{Type: QueueChange})
 			case e := <-events:
@@ -191,18 +227,18 @@ func (q Queue) List() []QueueElem {
 
 // Move moves the specified queue element `index` by `delta`. Currently only
 // -1 and +1 are supported for delta.
-func (q Queue) Move(index int, delta int) {
-	q.modify <- queueCmd{Type: Move, Index: index, Delta: delta}
+func (q Queue) Move(indexes []int, delta int) {
+	q.modify <- queueCmd{Type: Move, Indexes: indexes, Delta: delta}
 }
 
 // Move the specified queue element to the top of the queue.
-func (q Queue) MoveToTop(index int) {
-	q.modify <- queueCmd{Type: MoveToTop, Index: index}
+func (q Queue) MoveToTop(indexes []int) {
+	q.modify <- queueCmd{Type: MoveToTop, Indexes: indexes}
 }
 
 // Remove removes the specified queue element from the queue.
-func (q Queue) Remove(index int) {
-	q.modify <- queueCmd{Type: Remove, Index: index}
+func (q Queue) Remove(indexes []int) {
+	q.modify <- queueCmd{Type: Remove, Indexes: indexes}
 }
 
 // Clear the queue
