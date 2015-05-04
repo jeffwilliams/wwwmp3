@@ -205,7 +205,7 @@ func setMetainfo() {
 	}
 }
 
-// Give an list of paths to mp3 files, return a list of metadata maps
+// Given an list of paths to mp3 files, return a list of metadata maps
 func pathsToMetadatas(list []string) (result []map[string]string) {
 	result = make([]map[string]string, 0)
 
@@ -224,10 +224,30 @@ func pathsToMetadatas(list []string) (result []map[string]string) {
 	return
 }
 
+// Give a list of QueueElems, return a list of metadata maps
+func queueElemsToMetadatas(list []play.QueueElem) (result []map[string]string) {
+	result = make([]map[string]string, 0)
+
+	for _, elem := range list {
+		m := findMp3ByPath(elem.Filename)
+		if m == nil {
+			m = map[string]string{
+				"artist": "?",
+				"album":  "?",
+				"title":  "?",
+				"path":   elem.Filename,
+			}
+		}
+    m["queueId"] = strconv.FormatUint(uint64(elem.Id), 10)
+		result = append(result, m)
+	}
+	return
+}
+
 // listQueue returns a slice containing the metainfo of the tracks in the play queue.
 // The metainfo entries are typed as maps of names to values.
 func listQueue(queue play.Queue) []map[string]string {
-	return pathsToMetadatas(queue.List())
+	return queueElemsToMetadatas(queue.List())
 }
 
 // Perform functions on the mp3 player like play and pause.

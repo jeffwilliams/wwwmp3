@@ -17,14 +17,23 @@ type queueCmd struct {
 	Delta int
 }
 
+// QueueElem is an element in the play queue.
+type QueueElem struct {
+  Filename string
+  // A unique id for the element in the queue. This can be used to identify elements
+  // after the queue has been modified (i.e. if items have been moved).
+  Id uint32
+}
+
 // Queue implements a queue of metadata for a player. Items from the queue
 // are added to the player when the player is Empty.
 type Queue struct {
 	player  Player
 	files   *list.List
 	enqueue chan string
-	list    chan chan []string
+	list    chan chan []QueueElem
 	modify  chan queueCmd
+  nextId  uint32
 }
 
 func NewQueue(player Player) Queue {
@@ -35,8 +44,9 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 	q := Queue{
 		files:   list.New(),
 		enqueue: make(chan string),
-		list:    make(chan chan []string),
+		list:    make(chan chan []QueueElem),
 		modify:  make(chan queueCmd),
+    nextId:  0,
 	}
 
 	nth := func(list *list.List, n int) *list.Element {
@@ -65,9 +75,9 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 		s := player.GetStatus()
 		if s.State == Empty {
 
-			file := q.files.Remove(q.files.Front()).(string)
+			elem := q.files.Remove(q.files.Front()).(QueueElem)
 
-			_, err := player.Load(file)
+			_, err := player.Load(elem.Filename)
 			if err != nil {
 				return
 			}
@@ -140,15 +150,16 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 		for {
 			select {
 			case c := <-q.list:
-				a := make([]string, q.files.Len())
+				a := make([]QueueElem, q.files.Len())
 				i := 0
 				for e := q.files.Front(); e != nil; e = e.Next() {
-					a[i] = e.Value.(string)
+					a[i] = e.Value.(QueueElem)
 					i++
 				}
 				c <- a
 			case f := <-q.enqueue:
-				q.files.PushBack(f)
+				q.files.PushBack(QueueElem{f, q.nextId})
+        q.nextId += 1
 				addToPlayer()
 				sendEvent(Event{Type: QueueChange})
 			case e := <-events:
@@ -172,8 +183,8 @@ func (q Queue) Enqueue(filename string) {
 }
 
 // List returns the contents of the queue.
-func (q Queue) List() []string {
-	c := make(chan []string)
+func (q Queue) List() []QueueElem {
+	c := make(chan []QueueElem)
 	q.list <- c
 	return <-c
 }

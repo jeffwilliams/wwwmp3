@@ -92,6 +92,23 @@
         text-decoration: underline;
       }
 
+      .selection_list {
+        cursor: pointer;
+        /* Add extra space to items in the lists so that on mobile devices they're easier to click. */
+        margin-top: 0.2em;
+        margin-bottom: 0.5em;
+      }
+
+      .pointable {
+        cursor: pointer;
+      }
+
+      .selected {
+        color: #FFF;
+        background-color: #428BCA;
+        border-color: #357EBD;
+      }
+
     </style>
     <title>MP3 Player</title>
   </head>
@@ -109,8 +126,8 @@
         <div class="col-xs-3">
           <table>
             <tr>
-              <td><img src="img/{{playPauseImg()}}" ng-click="playPauseClicked()"/></td>
-              <td><img src="img/stop.png" ng-click="stopClicked()"/></td>
+              <td><img class="pointable" src="img/{{playPauseImg()}}" ng-click="playPauseClicked()"/></td>
+              <td><img class="pointable" src="img/stop.png" ng-click="stopClicked()"/></td>
             <tr>
           </table>
         </div>
@@ -156,44 +173,40 @@
 
       <div class="row">
         <div class="col-xs-6">
-          <strong>Play Queue</strong>
-          <span class="hspace"></span>
-          <span style="cursor:pointer;" class="glyphicon glyphicon-trash" ng-click="clearPlayQueue()"></span>
+        <!--<div class="col-xs-6 text-center">-->
+          <h3>Play Queue</h3>
+          <span>
+            <img class="pointable" src="img/sel-none-{{activeIfSomethingSelected(playQueue)}}.png" ng-click="playQueueSelectNone()"/><img class="pointable" src="img/sel-all-{{activeIfNotAllSelected(playQueue)}}.png" ng-click="playQueueSelectAll()"/><img class="pointable" src="img/up-{{activeIfSomethingSelected(playQueue)}}.png" ng-click="playQueueMoveClicked(-1)"/><img class="pointable" src="img/down-{{activeIfSomethingSelected(playQueue)}}.png" ng-click="playQueueMoveClicked(1)"/><img class="pointable" src="img/top-{{activeIfSomethingSelected(playQueue)}}.png" ng-click="playQueueMoveTop()"/><img class="pointable" src="img/remove-{{activeIfSomethingSelected(playQueue)}}.png" ng-click="playQueueRemoveClicked()"/>
+          </span>
         </div>
         <div class="col-xs-6">
           <strong>Recently Played</strong>
+          <span class="hspace"></span>
+          <img src="img/enqueue-active.png"/>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-xs-6">
+        </div>
+        <div class="col-xs-6">
         </div>
       </div>
       
       <div class="row">
         <div class="col-xs-6">
           <div class="row critlist">
-            <div class="col-xs-12" ng-repeat="s in playQueue track by $index">
-              <div class="row">
-                <div class="col-xs-10 nowrap">
-                  <span>{{s.title}} by <i>{{s.artist}}</i> from <i>{{s.album}}</i></span>
-                </div>
-                <div class="col-xs-2">
-                  <span style="cursor:pointer;" class="glyphicon glyphicon-remove" ng-click="removeFromPlayQueue($index)"></span>
-                  <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-up" ng-click="moveInPlayQueue($index,-1)"></span>
-                  <span style="cursor:pointer;" class="glyphicon glyphicon-chevron-down" ng-click="moveInPlayQueue($index,1)"></span>
-                  <span style="cursor:pointer;" class="glyphicon glyphicon-open" ng-click="moveToTopInPlayQueue($index)"></span>
-                </div>
+            <div class="col-xs-12 nowrap selection_list" ng-repeat="s in playQueue track by $index">
+              <div ng-class="selectionListCssClass(playQueue, $index, playQueueSelected)" ng-click="selectionListToggle(playQueue, $index, playQueueSelected)">
+                <span>{{s.title}} by <i>{{s.artist}}</i> from <i>{{s.album}}</i></span> 
               </div>
             </div>
           </div>
         </div>
         <div class="col-xs-6">
           <div class="row critlist">
-            <div class="col-xs-12" ng-repeat="s in recentlyPlayed track by $index">
-              <div class="row">
-                <div class="col-xs-10 nowrap">
-                  <span>{{s.title}} by <i>{{s.artist}}</i> from <i>{{s.album}}</i></span>
-                </div>
-                <div class="col-xs-2">
-                  <span style="cursor:pointer;" class="glyphicon glyphicon-share-alt" ng-click="addRecentToPlayQueue($index)"></span>
-                </div>
-              </div>
+            <div class="col-xs-12 nowrap" ng-repeat="s in recentlyPlayed track by $index">
+              <span>{{s.title}} by <i>{{s.artist}}</i> from <i>{{s.album}}</i></span>
             </div>
           </div>
         </div>
