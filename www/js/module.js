@@ -279,7 +279,8 @@ function MainCtrl($scope, $http, $timeout){
   $scope.playQueue = [];
   // Make a unique key from a playqueue item
   //$scope.metadataMakeKey = function(v){ return v.path; }
-  $scope.metadataMakeKey = function(v){ return v.queueId; }
+  $scope.selectionListKeyFromQueueId = function(v){ return v.queueId; }
+  $scope.selectionListKeyFromPath = function(v){ return v.path; }
 
   $scope.recentlyPlayed = [];
 
@@ -392,13 +393,15 @@ function MainCtrl($scope, $http, $timeout){
     $timeout(function(){
       var oldPlayQueue = $scope.playQueue;
       $scope.playQueue = meta;
-      $scope.selectionListReplaced(oldPlayQueue, $scope.playQueue, $scope.metadataMakeKey);
+      $scope.selectionListReplaced(oldPlayQueue, $scope.playQueue, $scope.selectionListKeyFromQueueId);
     });
   }
 
   var handlePlayerRecentChangeEvent = function(meta){
     $timeout(function(){
+      var old = $scope.recentlyPlayed;
       $scope.recentlyPlayed = meta;
+      $scope.selectionListReplaced(old, $scope.recentlyPlayed, $scope.selectionListKeyFromPath);
     });
   }
 
@@ -915,13 +918,27 @@ function MainCtrl($scope, $http, $timeout){
   /**************** END PLAY QUEUE ******************/
 
   /**************** RECENTLY PLAYED LIST ******************/
-  $scope.addRecentToPlayQueue = function(index) {
-    console.log("$scope.addRecentToPlayQueue called. index = " + index);
-    var p = $scope.recentlyPlayed[index];
-    console.log(p);
+  $scope.addRecentToPlayQueue = function() {
+    for(var i = 0; i < $scope.recentlyPlayed.length; i++) {
+      if($scope.selectionListIsSelected($scope.recentlyPlayed, i)) {
+        playerQueueMp3($scope.recentlyPlayed[i].path);
+      }
+    }
+  }
 
-    if(p){
-      playerQueueMp3(p.path);
+  $scope.recentlyPlayedSelectNone = function() {
+    for(var i = 0; i < $scope.recentlyPlayed.length; i++) {
+      if($scope.selectionListIsSelected($scope.recentlyPlayed, i)) {
+        $scope.selectionListUnselect($scope.recentlyPlayed, i) 
+      }
+    }
+  }
+
+  $scope.recentlyPlayedSelectAll = function() {
+    for(var i = 0; i < $scope.recentlyPlayed.length; i++) {
+      if(!$scope.selectionListIsSelected($scope.recentlyPlayed, i)) {
+        $scope.selectionListSelect($scope.recentlyPlayed, i);
+      }
     }
   }
   /**************** END RECENTLY PLAYED LIST ******************/
