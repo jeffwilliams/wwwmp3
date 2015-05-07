@@ -269,8 +269,6 @@ function MainCtrl($scope, $http, $timeout){
   $scope.albums = []
   $scope.songs = []
 
-  $scope.song = $scope.songs[0];
-
   // Currently playing mp3
   $scope.playing = null;
   // State of the currently playing mp3
@@ -291,18 +289,6 @@ function MainCtrl($scope, $http, $timeout){
   // Repeat mode is one of: DontRepeat, RepeatOne, or RepeatAll
   $scope.repeatMode = "DontRepeat";
 
-
-  var fixSelection = function(items, selection, setter){
-    if( items.length == 0 ) {
-      if ( selection != "" ) {
-        setter("");
-      }
-    } else {
-      if( items.indexOf(selection) == -1 ){
-        setter(items[0]);
-      }
-    }
-  }
 
   // Get a printable version of the last scanned mp3
   $scope.scannedMp3ForDisplay = function() {
@@ -530,8 +516,6 @@ function MainCtrl($scope, $http, $timeout){
           $scope.songs.push( data[i] )
         }
       }
-
-      fixSelection($scope.songs, $scope.song, function(x){console.log("changing song to " + x); $scope.song = x} );
     })
   }
   
@@ -875,9 +859,12 @@ function MainCtrl($scope, $http, $timeout){
 
   /**************** PLAY QUEUE ******************/
   $scope.addSelectedToPlayQueue = function() {
-    if($scope.song){
-      console.log("$scope.addSelectedToPlayQueue called. song title = " + $scope.song.title);
-      playerQueueMp3($scope.song.path);
+    for(var i = 0; i < $scope.songs.length; i++) {
+      if($scope.selectionListIsSelected($scope.songs, i)) {
+        //$scope.selectionListSelect($scope.recentlyPlayed, i);
+        playerQueueMp3($scope.songs[i].path);
+        $scope.selectionListUnselect($scope.songs, i);
+      }
     }
   }
 
@@ -1094,13 +1081,10 @@ function MainCtrl($scope, $http, $timeout){
     console.log("changeRepeatMode: called");
     if ($scope.repeatMode == "DontRepeat") {
       $scope.sendPlayerSetRepeatModeRequest("RepeatOne")
-      //$scope.repeatMode = "RepeatOne";
     } else if ($scope.repeatMode == "RepeatOne") {
       $scope.sendPlayerSetRepeatModeRequest("RepeatAll")
-      //$scope.repeatMode = "RepeatAll";
     } else if ($scope.repeatMode == "RepeatAll") {
       $scope.sendPlayerSetRepeatModeRequest("DontRepeat")
-      //$scope.repeatMode = "DontRepeat";
     }
   }
 
