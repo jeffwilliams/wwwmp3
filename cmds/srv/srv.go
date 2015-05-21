@@ -253,36 +253,55 @@ func listQueue(queue play.Queue) []map[string]string {
 // Perform functions on the mp3 player like play and pause.
 func servePlayer(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "servePlayer: " + r.Method + " " + r.URL.Path + " - "
+	log.Notice("%s requested", logPrefix)
 
 	if r.Method == "GET" {
 		if r.URL.Path == "/player/play" {
 			log.Notice("%s play", logPrefix)
 			err := player.Play()
 			if err != nil {
+				log.Error("%s player.Play() returned error: %v", logPrefix, err)
 				w.WriteHeader(500)
 				w.Write([]byte(err.Error()))
 			}
 		} else if r.URL.Path == "/player/pause" {
-			log.Notice("%s pause", logPrefix)
 			player.Pause()
 		} else if r.URL.Path == "/player/stop" {
-			log.Notice("%s stop", logPrefix)
 			player.Stop()
 		} else if r.URL.Path == "/player/volume" {
 			v, err := play.GetVolume()
 			if err != nil {
-				log.Error("%v", err)
+				log.Error("%s play.GetVolume() returned error: %v", logPrefix, err)
+				w.WriteHeader(500)
+				w.Write([]byte(err.Error()))
+				return
 			}
 			w.Write([]byte("{\"volume\": "))
 			w.Write([]byte(strconv.Itoa(int(v))))
 			w.Write([]byte("}"))
-			log.Notice("%s getvolume: returning %d", logPrefix, int(v))
+			log.Notice("%s returning %d", logPrefix, int(v))
 		}
 
 	} else if r.Method == "POST" {
 		decoder := (*json.Decoder)(nil)
 		if r.Body != nil {
 			decoder = json.NewDecoder(r.Body)
+		} else {
+			log.Error("%s posted with nil body.", logPrefix)
+			w.WriteHeader(400)
+			w.Write([]byte("400 Bad Request: no body"))
+			return
+		}
+
+		decodeReq := func(i interface{}) bool {
+			err := decoder.Decode(i)
+			if err != nil {
+				log.Error("%s decoding request failed: %v", logPrefix, err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
+				return false
+			}
+			return true
 		}
 
 		if r.URL.Path == "/player/queue.enqueue" {
@@ -290,32 +309,18 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				File string
 			}{}
 
-			err := decoder.Decode(&req)
-			if err != nil {
-				log.Error("%s decoding request failed: %v", logPrefix, err)
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid JSON"))
+			if !decodeReq(&req) {
 				return
 			}
 
 			queue.Enqueue(req.File)
 		} else if r.URL.Path == "/player/queue.move" {
-
-			if r.Body == nil {
-				log.Error("%s posted with nil body.", logPrefix)
-				return
-			}
-
 			req := struct {
 				Indexes []int
 				Delta   int
 			}{}
 
-			err := decoder.Decode(&req)
-			if err != nil {
-				log.Error("%s decoding request failed: %v", logPrefix, err)
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid JSON"))
+			if !decodeReq(&req) {
 				return
 			}
 
@@ -325,11 +330,7 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				Indexes []int
 			}{}
 
-			err := decoder.Decode(&req)
-			if err != nil {
-				log.Error("%s decoding request failed: %v", logPrefix, err)
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid JSON"))
+			if !decodeReq(&req) {
 				return
 			}
 
@@ -339,41 +340,27 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				Indexes []int
 			}{}
 
-			err := decoder.Decode(&req)
-			if err != nil {
-				log.Error("%s decoding request failed: %v", logPrefix, err)
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid JSON"))
+			if !decodeReq(&req) {
 				return
 			}
 
 			queue.Remove(req.Indexes)
 		} else if r.URL.Path == "/player/volume" {
-
 			req := struct {
 				Volume int
 			}{}
 
-			err := decoder.Decode(&req)
-			if err != nil {
-				log.Error("%s decoding request failed: %v", logPrefix, err)
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid JSON"))
+			if !decodeReq(&req) {
 				return
 			}
 
-			log.Notice("%s setvolume %v", logPrefix, req.Volume)
 			player.SetVolume(byte(req.Volume))
 		} else if r.URL.Path == "/player/seek" {
 			req := struct {
 				Seek int
 			}{}
 
-			err := decoder.Decode(&req)
-			if err != nil {
-				log.Error("%s decoding request failed: %v", logPrefix, err)
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid JSON"))
+			if !decodeReq(&req) {
 				return
 			}
 
@@ -384,23 +371,21 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				Mode string
 			}{}
 
-			err := decoder.Decode(&req)
-			if err != nil {
-				log.Error("%s decoding request failed: %v", logPrefix, err)
-				w.WriteHeader(400)
-				w.Write([]byte("400 Bad Request: invalid JSON"))
+			if !decodeReq(&req) {
 				return
 			}
 
 			r, err := ParseRepeatMode(req.Mode)
 			if err != nil {
-				log.Warning("%s set_repeat_mode: %v", logPrefix, err)
+				log.Warning("%s error parsing repeat mode: %v", logPrefix, err)
 				w.WriteHeader(400)
 				w.Write([]byte("400 Bad Request: Bad repeat mode"))
 				return
 			}
 
 			repeatMode = r
+			log.Warning("%s repeat mode: %v", logPrefix, repeatMode)
+
 			if repeatMode == RepeatOne {
 				player.SetRepeat(true)
 			} else {
