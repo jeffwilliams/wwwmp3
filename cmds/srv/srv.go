@@ -384,7 +384,6 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			}
 
 			repeatMode = r
-			log.Warning("%s repeat mode: %v", logPrefix, repeatMode)
 
 			if repeatMode == RepeatOne {
 				player.SetRepeat(true)
