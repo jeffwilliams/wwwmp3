@@ -337,7 +337,7 @@ func scanDirs(dirs []string) {
 
 	var lastSend time.Time
 
-	callback := func(m *scan.Metadata) {
+	callback := func(m *scan.Metadata, err error) {
 		log.Debug("Scanned %v", m)
 		now := time.Now()
 		if lastSend.IsZero() || now.Sub(lastSend) > scanEventPeriod {

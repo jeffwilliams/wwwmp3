@@ -7,6 +7,7 @@ import (
 	"github.com/jeffwilliams/wwwmp3/play"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -25,6 +26,8 @@ func (m Metadata) String() string {
 	b.Write([]byte(m.Artist))
 	b.Write([]byte("' album: '"))
 	b.Write([]byte(m.Album))
+	b.Write([]byte("' tracknum: '"))
+	b.Write([]byte(strconv.Itoa(m.Tracknum)))
 	b.Write([]byte("' title: '"))
 	b.Write([]byte(m.Title))
 	b.Write([]byte("'"))

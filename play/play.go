@@ -36,6 +36,23 @@ func makePlayError(prefix string) error {
 	return errors.New(prefix + C.GoString(C.play_get_last_error()))
 }
 
+// initialNum returns a string containing the initial sequence of digits
+// at the beginning of s.
+func initialNum(s string) string {
+	nondigit := false
+
+	f := func(r rune) rune {
+		if nondigit || r < '0' || r > '9' {
+			nondigit = true
+			return -1
+		} else {
+			return r
+		}
+	}
+
+	return strings.Map(f, s)
+}
+
 // Play the specified file. Return when playback is complete.
 func Play(filename string) {
 	n := C.CString(filename)
@@ -81,9 +98,10 @@ func GetVolume() (volume byte, err error) {
 
 // Metadata is information about an mp3 stored in id3 tags.
 type Metadata struct {
-	Title  string
-	Artist string
-	Album  string
+	Title    string
+	Artist   string
+	Album    string
+	Tracknum int
 }
 
 // Information about an mp3 determined once the mp3 is loaded.
@@ -102,12 +120,24 @@ type Info struct {
 }
 
 // GetMetadata extracts the id3 information from the mp3 file `filename`.
+// For integer fields (like Tracknum) for which there is no data the field
+// is set to -1.
 func GetMetadata(filename string) Metadata {
 	meta := C.play_meta(C.CString(filename))
+
+	tracknum := -1
+	digits := initialNum(C.GoString(meta.tracknum))
+	if len(digits) > 0 {
+		if i, err := strconv.Atoi(digits); err == nil {
+			tracknum = i
+		}
+	}
+
 	r := Metadata{
-		Title:  strings.Trim(C.GoString(meta.title), " "),
-		Artist: strings.Trim(C.GoString(meta.artist), " "),
-		Album:  strings.Trim(C.GoString(meta.album), " "),
+		Title:    strings.Trim(C.GoString(meta.title), " "),
+		Artist:   strings.Trim(C.GoString(meta.artist), " "),
+		Album:    strings.Trim(C.GoString(meta.album), " "),
+		Tracknum: tracknum,
 	}
 	C.play_delete_meta(meta)
 	return r

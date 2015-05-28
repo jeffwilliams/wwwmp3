@@ -113,24 +113,29 @@ func main() {
 		}
 	} else {
 		lastLen := 0
-		cols, err := ttyCols()
+		cols, colerr := ttyCols()
+		cols -= 1
 
 		scan.ScanMp3sToDb(flag.Arg(0), db,
-			func(m *scan.Metadata) {
+			func(m *scan.Metadata, err error) {
 				fmt.Printf("\r")
 				for i := 0; i < lastLen; i++ {
 					fmt.Printf(" ")
 				}
 				fmt.Printf("\r")
 				msg := m.Path
+				if err != nil {
+					msg = err.Error() + ":" + msg
+				}
 				runes := []rune(msg)
-				if err == nil && len(runes) > cols {
+				lastLen = len(runes)
+				if colerr == nil && len(runes) > cols {
 					// Take first `cols` characters
 					msg = string(runes[:cols])
+					lastLen = cols
 				}
 				fmt.Printf(msg)
 				os.Stdout.Sync()
-				lastLen = len(runes)
 			})
 	}
 	fmt.Printf("\r")

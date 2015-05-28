@@ -20,25 +20,17 @@ func main() {
 	fmt.Printf("Title:  '%s'\n", meta.Title)
 	fmt.Printf("Artist: '%s'\n", meta.Artist)
 	fmt.Printf("Album:  '%s'\n", meta.Album)
+	fmt.Printf("Tracknum:  '%d'\n", meta.Tracknum)
 
-	play.SetVolume(50)
+	/*
+		play.SetVolume(50)
+	*/
 	volume, err := play.GetVolume()
 	fmt.Println("Volume is", volume)
 
 	fmt.Println("Got passed", len(os.Args), "args")
 
 	_ = time.Second
-	/*
-	   go play.Play(os.Args[1])
-
-	   time.Sleep(2*time.Second)
-	   play.SetVolume(40)
-	   time.Sleep(2*time.Second)
-	   play.SetVolume(30)
-	   time.Sleep(2*time.Second)
-	   play.SetVolume(50)
-	   time.Sleep(2*time.Second)
-	*/
 
 	// New-style player
 

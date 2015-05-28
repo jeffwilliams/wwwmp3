@@ -453,14 +453,14 @@ function MainCtrl($scope, $http, $timeout){
 
   /**************** MP3 METAINFORMATION ******************/
 
-  var getMp3Data = function(page, fields, orderField, callback) {
+  var getMp3Data = function(page, fields, orderFields, callback) {
     var parms = {
       'pagesize': 10,
       'page': page,
       'artist' : $scope.artistCriteria,
       'album' : $scope.albumCriteria,
       'title' : $scope.titleCriteria,
-      'order' : orderField
+      'order' : orderFields.join()
     }
 
     if ( fields ){
@@ -478,7 +478,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   var getArtists = function(){
-    getMp3Data($scope.artistPage, ["artist"], "artist", function(data){
+    getMp3Data($scope.artistPage, ["artist"], ["artist"], function(data){
       $scope.artistPageIsLast = false;
       $scope.artists = []
       for(var i = 0; i < data.length; i++){
@@ -492,7 +492,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   var getAlbums = function(){
-    getMp3Data($scope.albumPage, ["album"], "album", function(data){
+    getMp3Data($scope.albumPage, ["album"], ["album"], function(data){
       $scope.albumPageIsLast = false;
       $scope.albums = []
       for(var i = 0; i < data.length; i++){
@@ -506,7 +506,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   var getSongs = function(){
-    getMp3Data($scope.titlePage, null, "title", function(data){
+    getMp3Data($scope.titlePage, null, ["tracknum", "title"], function(data){
       $scope.titlePageIsLast = false;
       $scope.songs = []
       for(var i = 0; i < data.length; i++){

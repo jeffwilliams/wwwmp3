@@ -91,6 +91,7 @@ play_metadata_t play_meta(char* filename){
   field_text(&result.title, tag.Find(ID3FID_TITLE));
   field_text(&result.album, tag.Find(ID3FID_ALBUM));
   field_text(&result.artist, tag.Find(ID3FID_LEADARTIST));
+  field_text(&result.tracknum, tag.Find(ID3FID_TRACKNUM));
 
   // If title is not set, set it to the filename (without extension)
   if(!result.title || strlen(result.title) == 0) {

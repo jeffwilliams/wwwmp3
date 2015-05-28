@@ -25,13 +25,13 @@ type Mp3Db struct {
 }
 
 func (m *Mp3Db) prepare() (err error) {
-	m.stmtAddMp3, err = m.DB.Prepare("insert into mp3(artist, album, title, path) values(?,?,?,?)")
+	m.stmtAddMp3, err = m.DB.Prepare("insert into mp3(artist, album, title, tracknum, path) values(?,?,?,?,?)")
 	if err != nil {
 		return
 	}
 	m.stmtCleaners = append(m.stmtCleaners, func() { m.stmtAddMp3.Close() })
 
-	m.stmtUpdateMp3, err = m.DB.Prepare("update mp3 set artist = ?, album = ?, title = ? where path = ?")
+	m.stmtUpdateMp3, err = m.DB.Prepare("update mp3 set artist = ?, album = ?, title = ?, tracknum = ? where path = ?")
 	if err != nil {
 		return
 	}
@@ -77,7 +77,7 @@ func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 		stmtCleaners: make([]func(), 0),
 	}
 
-	sql := `create table mp3(path text not null primary key, artist text, album text, title text);`
+	sql := `create table mp3(path text not null primary key, artist text, album text, title text, tracknum int);`
 	_, err = r.DB.Exec(sql)
 	if err != nil {
 		return
@@ -89,10 +89,16 @@ func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 
 // ScanMp3sToDb scans a directory tree for mp3 files and updates `db` with the new mp3 information found.
 // If `callback` is not nil, it is called each metadata.
-func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) error {
+func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error)) error {
 	c := make(chan Metadata)
 
 	go ScanMp3s(basedir, c)
+
+	doCallback := func(m *Metadata, err error) {
+		if callback != nil {
+			callback(m, err)
+		}
+	}
 
 	i := 0
 	for m := range c {
@@ -101,14 +107,16 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) error {
 		err := db.stmtPathExists.QueryRow(m.Path).Scan(&cnt)
 
 		if err != nil {
-			fmt.Errorf("ScanMp3sToDb: querying for existence failed: %v", err)
+			doCallback(&m, fmt.Errorf("ScanMp3sToDb: querying for existence failed: %v", err))
 			continue
 		}
 
 		tx, err := db.DB.Begin()
-		if err != nil {
-			fmt.Errorf("ScanMp3sToDb: creating transaction failed: %v", err)
-		}
+		// Don't call the callback since we are not returning, and we want the callback called
+		// once per metadata.
+		//if err != nil {
+		//	doCallback(&m, fmt.Errorf("ScanMp3sToDb: creating transaction failed: %v", err))
+		//}
 
 		var stmt *sql.Stmt
 		if cnt == 0 {
@@ -119,19 +127,21 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata)) error {
 			stmt = tx.Stmt(db.stmtUpdateMp3)
 		}
 
-		_, err = stmt.Exec(m.Artist, m.Album, m.Title, m.Path)
+		_, err = stmt.Exec(m.Artist, m.Album, m.Title, m.Tracknum, m.Path)
 		if err != nil {
-			fmt.Errorf("ScanMp3sToDb: inserting or updating failed: %v\n", err)
+			doCallback(&m, fmt.Errorf("ScanMp3sToDb: inserting or updating failed: %v\n", err))
 			continue
 		}
 		err = tx.Commit()
-		if err != nil {
-			fmt.Errorf("ScanMp3sToDb: commit failed: %v", err)
-		}
+		// Don't call the callback since we are not returning, and we want the callback called
+		// once per metadata.
+		//if err != nil {
+		//	doCallback(&m, fmt.Errorf("ScanMp3sToDb: commit failed: %v", err))
+		//}
 
 		i++
 		if callback != nil {
-			callback(&m)
+			doCallback(&m, nil)
 		}
 	}
 
@@ -162,8 +172,11 @@ func escape(s string) string {
 	return strings.Replace(s, "'", "''", -1)
 }
 
+// Database fields that are textual and not numeric.
+var stringFields map[string]bool = map[string]bool{"artist": true, "album": true, "title": true, "path": true}
+
 // FindMp3sInDb passes mp3 metainformation to channel `ch` for all mp3s matching the specified criteria.
-// `fields` should be a list of field names to return; allowed fields are "artist", "album", "title", "path". If fields is nil, all fields are returned.
+// `fields` should be a list of field names to return; allowed fields are "artist", "album", "title", "tracknum", "path". If fields is nil, all fields are returned.
 // `filt` should be a simple filter whos keys are fieldnames, and values are substrings of that field to match against. If filt is nil, no filter is applied.
 // `order` should be a list of field names to order ascending by, or nil for no ordering.
 // `p` describes what page of data to return; PageSize rows are returned, starting at row Page*PageSize.
@@ -174,7 +187,7 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 	var sql bytes.Buffer
 
 	if fields == nil || len(fields) == 0 {
-		fields = []string{"artist", "album", "title", "path"}
+		fields = []string{"artist", "album", "title", "tracknum", "path"}
 	}
 
 	sql.WriteString("select distinct ")
@@ -206,15 +219,21 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 	}
 
 	if order == nil || len(order) == 0 {
-		order = []string{"artist", "album", "title", "path"}
+		order = []string{"artist", "album", "tracknum", "title", "path"}
 	}
 
 	sql.WriteString(" order by ")
 	for i, _ := range order {
 		var buf bytes.Buffer
-		buf.WriteString("lower(")
+
+		// Only use the lower() function on string fields
+		if _, ok := stringFields[order[i]]; ok {
+			buf.WriteString("lower(")
+		}
 		buf.WriteString(order[i])
-		buf.WriteString(")")
+		if _, ok := stringFields[order[i]]; ok {
+			buf.WriteString(")")
+		}
 		order[i] = buf.String()
 	}
 	sql.WriteString(makelist(order, ", "))
@@ -228,6 +247,8 @@ func FindMp3sInDb(db Mp3Db, fields []string, filt map[string]string, order []str
 		sql.WriteString(" offset ")
 		sql.WriteString(strconv.Itoa(p.Page * p.PageSize))
 	}
+
+	fmt.Println("Query: ", sql.String())
 
 	rows, err := db.DB.Query(sql.String())
 	if err != nil && errWriter != nil {

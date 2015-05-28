@@ -8,6 +8,7 @@ typedef struct {
   char* title;
   char* artist;
   char* album;
+  char* tracknum;
 } play_metadata_t;
 
 typedef struct {
