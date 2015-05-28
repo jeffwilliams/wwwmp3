@@ -5,6 +5,7 @@ import "container/list"
 type Recent struct {
 	List list.List
 	Held string
+	Max  int
 }
 
 // Hold puts the specified path in a temporary variable. When Commit
@@ -26,8 +27,13 @@ func (r *Recent) add(path string) {
 		return
 	}
 
+	max := r.Max
+	if max == 0 {
+		max = 10
+	}
+
 	r.List.PushFront(path)
-	if r.List.Len() > 10 {
+	if r.List.Len() > max {
 		r.List.Remove(r.List.Back())
 	}
 }
