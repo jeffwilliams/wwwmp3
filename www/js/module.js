@@ -909,6 +909,7 @@ function MainCtrl($scope, $http, $timeout){
     for(var i = 0; i < $scope.recentlyPlayed.length; i++) {
       if($scope.selectionListIsSelected($scope.recentlyPlayed, i)) {
         playerQueueMp3($scope.recentlyPlayed[i].path);
+        $scope.selectionListUnselect($scope.recentlyPlayed, i);
       }
     }
   }
@@ -929,6 +930,24 @@ function MainCtrl($scope, $http, $timeout){
     }
   }
   /**************** END RECENTLY PLAYED LIST ******************/
+
+  /**************** FILTERED SONGS ******************/
+  $scope.filteredSongsSelectNone = function() {
+    for(var i = 0; i < $scope.songs.length; i++) {
+      if($scope.selectionListIsSelected($scope.songs, i)) {
+        $scope.selectionListUnselect($scope.songs, i) 
+      }
+    }
+  }
+
+  $scope.filteredSongsSelectAll = function() {
+    for(var i = 0; i < $scope.songs.length; i++) {
+      if(!$scope.selectionListIsSelected($scope.songs, i)) {
+        $scope.selectionListSelect($scope.songs, i);
+      }
+    }
+  }
+  /**************** END FILTERED SONGS ******************/
 
   /**************** SELECTION LIST ******************/
   /*

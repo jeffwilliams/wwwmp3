@@ -326,15 +326,17 @@
       </div>
 
       <div class="row">
-        <div class="col-xs-10">
+        <div class="col-xs-12">
+          <img class="pointable" src="img/sel-none-{{activeIfSomethingSelected(songs)}}.png" ng-click="filteredSongsSelectNone()" data-toggle="tooltip" data-placement="top" title="Select none"/><img class="pointable" src="img/sel-all-{{activeIfNotAllSelected(songs)}}.png" ng-click="filteredSongsSelectAll()" data-toggle="tooltip" data-placement="top" title="Select all"/><img class="pointable" src="img/recent-enqueue-{{activeIfSomethingSelected(songs)}}.png" ng-click="addSelectedToPlayQueue()" data-toggle="tooltip" data-placement="top" title="Add to play queue"/>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col-xs-12">
           <div class="nowrap selection_list" ng-repeat="s in songs track by $index">
             <div ng-class="selectionListCssClass(songs, $index)" ng-click="selectionListToggle(songs, $index)">
               <span>{{s.title}} by <i>{{s.artist}}</i> from <i>{{s.album}}</i></span>
             </div>
           </div>
-        </div>
-        <div class="col-xs-2">
-          <img class="pointable" src="img/enqueue-{{activeIfSomethingSelected(songs)}}.png" ng-click="addSelectedToPlayQueue()" data-toggle="tooltip" data-placement="left" title="Add to play queue"/>
         </div>
       </div>
 
