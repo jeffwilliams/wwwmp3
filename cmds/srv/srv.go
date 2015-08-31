@@ -187,6 +187,7 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 		d, err = jsonPlayerEvent(event, listQueue(queue))
 	} else if event.Type == play.Error {
 		log.Error("%v", event.Data.(error))
+		d, err = jsonPlayerEvent(event, nil)
 	} else {
 		d, err = jsonPlayerEvent(event, nil)
 	}

@@ -116,6 +116,17 @@
     <div class="container" ng-controller="MainCtrl">
       <div class="space"></div>
 
+      <div class="alert alert-danger alert-dismissable" ng-repeat="e in getErrors()"> 
+        {{e}}
+        <button type="button" class="close" ng-click="removeError(e)" aria-hidden="true">&times;</button>
+      </div>
+      <!--
+      <div class="alert alert-danger alert-dismissable"> 
+        Something went wrong!
+        <button type="button" class="close" "ng-click"="removeAlert('tools',warn)" "aria-hidden"="true">&times;</button>
+      </div>
+      -->
+
       <div class="row">
         <div id="playback_pos_container" class="col-xs-12">
           <input id="playback_pos" type="range" min="0" max="{{maxPosition}}" ng-model="position" ng-change="positionMouseup()"/>

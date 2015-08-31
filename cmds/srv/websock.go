@@ -21,6 +21,8 @@ func jsonPlayerEvent(event play.Event, queue []map[string]string) ([]byte, error
 		return json.Marshal(map[string]play.PlayerState{"State": event.Data.(play.PlayerState)})
 	case play.QueueChange:
 		return json.Marshal(map[string][]map[string]string{"Queue": queue})
+	case play.Error:
+		return json.Marshal(map[string]string{"Error": event.Data.(error).Error()})
 	default:
 		panic("JsonPlayerEvent doesn't handle event " + strconv.Itoa(int(event.Type)))
 	}

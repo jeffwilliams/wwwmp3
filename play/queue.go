@@ -2,6 +2,7 @@ package play
 
 import (
 	"container/list"
+	"fmt"
 	"sort"
 )
 
@@ -95,10 +96,15 @@ func NewQueueWithEvents(player Player, events chan Event) Queue {
 
 			_, err := player.Load(elem.Filename)
 			if err != nil {
+				// TODO: If we get an error here, we'll stop trying to play stuff until
+				// something is added to the queue. Should we start a timer to retry here? It could be
+				// a temporary condition like something (youtube) stole the audio device.
+				sendEvent(Event{Type: Error, Data: fmt.Errorf("Queue failed to load file %s: %t", elem.Filename, err)})
 				return
 			}
 			err = player.Play()
 			if err != nil {
+				sendEvent(Event{Type: Error, Data: fmt.Errorf("Queue failed to play file %s: %t", elem.Filename, err)})
 				return
 			}
 		}

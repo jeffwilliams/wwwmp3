@@ -289,7 +289,6 @@ function MainCtrl($scope, $http, $timeout){
   // Repeat mode is one of: DontRepeat, RepeatOne, or RepeatAll
   $scope.repeatMode = "DontRepeat";
 
-
   // Get a printable version of the last scanned mp3
   $scope.scannedMp3ForDisplay = function() {
     if(null == $scope.scannedMp3){
@@ -298,6 +297,30 @@ function MainCtrl($scope, $http, $timeout){
       return $scope.scannedMp3.Title + " by " + $scope.scannedMp3.Artist;
     }
   }
+
+  /**************** ERROR HANDLING ******************/
+  // Errors to display at the top of the screen. The errors are stored as 
+  // hash keys to remove duplicates.
+  $scope.errors = {};
+
+  // Testing error
+  $scope.errors = {'Testing. Click to close -->':1};
+
+  $scope.addError = function(err) {
+    $scope.errors[err] = 1;
+  }
+
+  $scope.getErrors = function() {
+    // http://stackoverflow.com/questions/18912/how-to-find-keys-of-a-hash
+    ks = Object.keys($scope.errors);
+    return Object.keys($scope.errors);
+  }
+
+  $scope.removeError = function(err) {
+    console.log("Removing error",err);
+    delete $scope.errors[err];
+  }
+  /**************** END ERROR HANDLING ******************/
 
   /**************** PLAYER EVENT HANDLING ******************/
   var handlePlayerOffsetEvent = function(position){
@@ -397,6 +420,12 @@ function MainCtrl($scope, $http, $timeout){
     });
   }
 
+  var handlePlayerErrorEvent = function(error){
+    $timeout(function(){
+      $scope.addError(error);
+    });
+  }
+
   var playerEventsConnect = function(){
     // Build the websocket URL based on the current window location.
     var loc = window.location, new_uri;
@@ -431,6 +460,8 @@ function MainCtrl($scope, $http, $timeout){
         handlePlayerRecentChangeEvent(e["Recent"])
       if("RepeatMode" in e)
         handlePlayerRepeatModeEvent(e["RepeatMode"])
+      if("Error" in e)
+        handlePlayerErrorEvent(e["Error"])
     }
 
     $scope.playerEventsWebsock.onopen = function(event){
