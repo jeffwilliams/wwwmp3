@@ -304,7 +304,7 @@ function MainCtrl($scope, $http, $timeout){
   $scope.errors = {};
 
   // Testing error
-  $scope.errors = {'Testing. Click to close -->':1};
+  //$scope.errors = {'Testing. Click to close -->':1};
 
   $scope.addError = function(err) {
     $scope.errors[err] = 1;
