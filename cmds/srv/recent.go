@@ -23,7 +23,8 @@ func (r *Recent) Commit() {
 }
 
 func (r *Recent) add(path string) {
-	if r.contains(path) {
+	if b, e := r.contains(path); b {
+		r.List.MoveToFront(e)
 		return
 	}
 
@@ -38,13 +39,13 @@ func (r *Recent) add(path string) {
 	}
 }
 
-func (r Recent) contains(path string) bool {
+func (r Recent) contains(path string) (bool, *list.Element) {
 	for e := r.List.Front(); e != nil; e = e.Next() {
 		if e.Value == path {
-			return true
+			return true, e
 		}
 	}
-	return false
+	return false, nil
 }
 
 func (r Recent) Slice() []string {
