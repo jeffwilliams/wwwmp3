@@ -3,7 +3,6 @@ package scan
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/jeffwilliams/wwwmp3/play"
 	"os"
 	"regexp"
@@ -34,19 +33,32 @@ func (m Metadata) String() string {
 	return b.String()
 }
 
-// Scan a directory tree for files. Pass the full path of all files to the `files` chan.
+// Scan scans a directory tree for files and passes the full path of all files to the `files` chan.
 // If reading basedir fails, an error is returned.
-func Scan(basedir string, files chan string) error {
+func Scan(path string, files chan string) error {
 	defer func() {
 		close(files)
 	}()
 
+	// Special case: user passed a file
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+
+	if !fi.IsDir() {
+		files <- path
+		return nil
+	}
+
 	var scan func(dir string) error
 
 	scan = func(dir string) error {
+
 		file, err := os.Open(dir)
 		if err != nil {
-			return fmt.Errorf("Opening directory %v failed: %v", basedir, err)
+			//return fmt.Errorf("Opening directory %v failed: %v", dir, err)
+			// TODO: Log a message here.
 		}
 
 		for {
@@ -69,20 +81,21 @@ func Scan(basedir string, files chan string) error {
 		return nil
 	}
 
-	return scan(basedir)
+	return scan(path)
 }
 
 var mp3Regexp *regexp.Regexp = regexp.MustCompile(`\.[mM][pP]3$`)
 
-// Scan a directory tree for mp3 files. Pass the mp3 Metadata to the chan `meta`.
-func ScanMp3s(basedir string, meta chan Metadata) {
+// ScanMp3s scans a directory tree for mp3 files. It passes the mp3 Metadata to the chan `meta`.
+// As a special case, if path is a file it alone is scanned.
+func ScanMp3s(path string, meta chan Metadata) {
 	c := make(chan string)
 
 	defer func() {
 		close(meta)
 	}()
 
-	go Scan(basedir, c)
+	go Scan(path, c)
 
 	for f := range c {
 		if mp3Regexp.MatchString(f) {
