@@ -89,7 +89,7 @@ func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 
 // ScanMp3sToDb scans a directory tree for mp3 files and updates `db` with the new mp3 information found.
 // If `callback` is not nil, it is called each metadata.
-func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error)) error {
+func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error)) (succCnt, errCnt int) {
 	c := make(chan Metadata)
 
 	go ScanMp3s(basedir, c)
@@ -100,7 +100,6 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error
 		}
 	}
 
-	i := 0
 	for m := range c {
 
 		var cnt int
@@ -108,15 +107,18 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error
 
 		if err != nil {
 			doCallback(&m, fmt.Errorf("ScanMp3sToDb: querying for existence failed: %v", err))
+			errCnt++
 			continue
 		}
 
 		tx, err := db.DB.Begin()
 		// Don't call the callback since we are not returning, and we want the callback called
 		// once per metadata.
-		//if err != nil {
-		//	doCallback(&m, fmt.Errorf("ScanMp3sToDb: creating transaction failed: %v", err))
-		//}
+		if err != nil {
+			//doCallback(&m, fmt.Errorf("ScanMp3sToDb: creating transaction failed: %v", err))
+			errCnt++
+			continue
+		}
 
 		var stmt *sql.Stmt
 		if cnt == 0 {
@@ -130,22 +132,24 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error
 		_, err = stmt.Exec(m.Artist, m.Album, m.Title, m.Tracknum, m.Path)
 		if err != nil {
 			doCallback(&m, fmt.Errorf("ScanMp3sToDb: inserting or updating failed: %v\n", err))
+			errCnt++
 			continue
 		}
 		err = tx.Commit()
 		// Don't call the callback since we are not returning, and we want the callback called
 		// once per metadata.
-		//if err != nil {
-		//	doCallback(&m, fmt.Errorf("ScanMp3sToDb: commit failed: %v", err))
-		//}
+		if err != nil {
+			//	doCallback(&m, fmt.Errorf("ScanMp3sToDb: commit failed: %v", err))
+			errCnt++
+		}
 
-		i++
+		succCnt++
 		if callback != nil {
 			doCallback(&m, nil)
 		}
 	}
 
-	return nil
+	return
 }
 
 // Paging describes what page of data to return.

@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var dbflag = flag.String("db", "", "If set, store data in the mentioned database")
@@ -149,11 +150,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	startTime := time.Now()
+
+	succCnt := 0
+	errCnt := 0
+
 	if !usedb {
 		c := make(chan scan.Metadata)
 		go scan.ScanMp3s(flag.Arg(0), c)
 
 		for meta := range c {
+			succCnt++
 			if *dump {
 				fmt.Println("====", meta.Path)
 				play.DebugMetadata(meta.Path)
@@ -167,9 +174,13 @@ func main() {
 
 		printer := printProgNonblocking()
 
-		scan.ScanMp3sToDb(flag.Arg(0), db, printer)
+		succCnt, errCnt = scan.ScanMp3sToDb(flag.Arg(0), db, printer)
 	}
 	fmt.Printf("\r")
 	fmt.Printf("\n")
+
+	diff := time.Now().Sub(startTime)
+
+	fmt.Printf("\nScanned %d mp3s (%d errors) in %s\n", succCnt+errCnt, errCnt, diff)
 
 }
