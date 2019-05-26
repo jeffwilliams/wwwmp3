@@ -353,7 +353,9 @@ func scanDirs(dirs []string) {
 		log.Info("Done scanning directory %v", d)
 	}
 	scanTee.In <- (*scan.Metadata)(nil)
+	scanMutex.Lock()
 	scanning = false
+	scanMutex.Unlock()
 }
 
 func showHelp() {
