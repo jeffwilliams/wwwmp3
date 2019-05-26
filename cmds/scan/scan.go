@@ -70,10 +70,62 @@ func ttyCols() (int, error) {
 	return v, nil
 }
 
+type ScanResult struct {
+	Meta *scan.Metadata
+	Err  error
+}
+
+func printProg(c chan ScanResult) {
+	lastLen := 0
+	cols, colerr := ttyCols()
+	cols -= 1
+
+	for r := range c {
+		fmt.Printf("\r")
+		for i := 0; i < lastLen; i++ {
+			fmt.Printf(" ")
+		}
+		fmt.Printf("\r")
+		msg := r.Meta.Path
+		if r.Err != nil {
+			msg = r.Err.Error() + ":" + msg
+		}
+		runes := []rune(msg)
+		lastLen = len(runes)
+		if colerr == nil && len(runes) > cols {
+			// Take first `cols` characters
+			msg = string(runes[:cols])
+			lastLen = cols
+		}
+		fmt.Printf(msg)
+		os.Stdout.Sync()
+	}
+}
+
+func printProgNonblocking() func(m *scan.Metadata, err error) {
+
+	c := make(chan ScanResult)
+
+	go printProg(c)
+
+	return func(m *scan.Metadata, err error) {
+		r := ScanResult{m, err}
+		if err != nil {
+			// Don't drop errors
+			c <- r
+		} else {
+			select {
+			case c <- r:
+			default:
+				// Printing still in progress. Drop this message
+			}
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 
-	//var db *leveldb.DB = nil
 	var db scan.Mp3Db
 	usedb := false
 
@@ -112,31 +164,10 @@ func main() {
 			}
 		}
 	} else {
-		lastLen := 0
-		cols, colerr := ttyCols()
-		cols -= 1
 
-		scan.ScanMp3sToDb(flag.Arg(0), db,
-			func(m *scan.Metadata, err error) {
-				fmt.Printf("\r")
-				for i := 0; i < lastLen; i++ {
-					fmt.Printf(" ")
-				}
-				fmt.Printf("\r")
-				msg := m.Path
-				if err != nil {
-					msg = err.Error() + ":" + msg
-				}
-				runes := []rune(msg)
-				lastLen = len(runes)
-				if colerr == nil && len(runes) > cols {
-					// Take first `cols` characters
-					msg = string(runes[:cols])
-					lastLen = cols
-				}
-				fmt.Printf(msg)
-				os.Stdout.Sync()
-			})
+		printer := printProgNonblocking()
+
+		scan.ScanMp3sToDb(flag.Arg(0), db, printer)
 	}
 	fmt.Printf("\r")
 	fmt.Printf("\n")
