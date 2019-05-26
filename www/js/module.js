@@ -812,7 +812,7 @@ function MainCtrl($scope, $http, $timeout){
   }
 
   $scope.scan = function(){
-    $http.get("/scan/start").
+    $http.get("/scan/all").
       success(function(data,status,headers,config){
       }).
       error(function(data,status,headers,config){

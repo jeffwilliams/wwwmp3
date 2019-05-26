@@ -244,11 +244,25 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func enterScanning() bool {
+	scanMutex.Lock()
+	defer scanMutex.Unlock()
+
+	if scanning {
+		return false
+	} else {
+		scanning = true
+		return true
+	}
+}
+
 // Perform functions related to mp3 scanning
 func serveScan(w http.ResponseWriter, r *http.Request) {
-	log.Notice("serveScan: called")
+	logPrefix := "serveScan: " + r.Method + " " + r.URL.Path + " - "
+	log.Notice("%s requested", logPrefix)
+
 	if r.Method == "GET" {
-		if r.URL.Path == "/scan/start" {
+		if r.URL.Path == "/scan/all" {
 			if mp3Dirs != nil {
 				scanMutex.Lock()
 				defer scanMutex.Unlock()
@@ -260,6 +274,41 @@ func serveScan(w http.ResponseWriter, r *http.Request) {
 				log.Notice("serveScan: scan requested but no directories to scan")
 				w.WriteHeader(404)
 				w.Write([]byte("404 Not Found: no directories to scan"))
+			}
+		}
+	} else if r.Method == "POST" {
+		decoder := (*json.Decoder)(nil)
+		if r.Body != nil {
+			decoder = json.NewDecoder(r.Body)
+		} else {
+			log.Error("%s posted with nil body.", logPrefix)
+			w.WriteHeader(400)
+			w.Write([]byte("400 Bad Request: no body"))
+			return
+		}
+
+		decodeReq := func(i interface{}) bool {
+			err := decoder.Decode(i)
+			if err != nil {
+				log.Error("%s decoding request failed: %v", logPrefix, err)
+				w.WriteHeader(400)
+				w.Write([]byte("400 Bad Request: invalid JSON"))
+				return false
+			}
+			return true
+		}
+
+		if r.URL.Path == "/scan/path" {
+			req := struct {
+				Path string
+			}{}
+
+			if !decodeReq(&req) {
+				return
+			}
+
+			if enterScanning() {
+				go scanDirs([]string{req.Path})
 			}
 		}
 	}
