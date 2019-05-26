@@ -127,14 +127,18 @@ void play_debug_meta(char* filename){
       case ID3FTY_NONE:
         printf("none"); break;
       case ID3FTY_INTEGER:
-        printf("int"); break;
+        printf("int, id %d: %u",
+            field->GetID(), 
+            (uint32) field->Get());
+        break;
       case ID3FTY_BINARY:
         printf("binary"); break;
       case ID3FTY_TEXTSTRING:
         field->Get(buf, 1000);
         printf("text with %d items, encoding ", field->GetNumTextItems());
         switch(field->GetEncoding()){
-        case ID3TE_UTF16: printf("UTF-16"); 
+        case ID3TE_UTF16: 
+          printf("UTF-16"); 
 
           if ( cd != (iconv_t) -1 ) {
             char* in = (char*) field->GetRawUnicodeText();
@@ -157,21 +161,28 @@ void play_debug_meta(char* filename){
             }
           }
           break;
-        case ID3TE_UTF16BE: printf("UTF-16BE"); 
+        case ID3TE_UTF16BE: 
+          printf("UTF-16BE"); 
           printf(": '%s'", buf);
           break;
-        case ID3TE_UTF8: printf("UTF-8");
+        case ID3TE_UTF8: 
+          printf("UTF-8");
           printf(": '%s'", buf);
           break;
-        case ID3TE_NONE: printf("none");
+        case ID3TE_NONE: 
+          printf("none");
           printf(": '%s'", buf);
           break;
-        case ID3TE_ISO8859_1: printf("ISO-8859-1/ASCII");
+        case ID3TE_ISO8859_1: 
+          printf("ISO-8859-1/ASCII");
           printf(": '%s'", buf);
           break;
         }
         break;
+      default:
+        printf("unknown");
       }
+
       printf("\n");
     }
     delete fieldIter;
