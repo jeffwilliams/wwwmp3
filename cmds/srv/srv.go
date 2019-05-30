@@ -72,11 +72,16 @@ var (
 
 	// When the repeatMode is changed, this tee is written to.
 	repeatModeTee = tee.New()
+
+	// prefix to prepend to MP3 paths before playing them
+	prefix Prefix
 )
 
 // findMp3ByPath returns the mp3 information for the mp3 with the specified path.
 func findMp3ByPath(path string) map[string]string {
 	ch := make(chan map[string]string)
+
+	path = prefix.remove(path)
 
 	go scan.FindMp3sInDb(
 		db,
@@ -108,6 +113,8 @@ func setMetainfo() {
 		meta["rate"] = strconv.Itoa(info.Rate)
 		meta["duration"] = strconv.FormatFloat(info.Duration, 'f', -1, 64)
 		meta["sec_per_sample"] = strconv.FormatFloat(info.Sps, 'f', -1, 64)
+
+		log.Debug("Setting metainfo for current song to %v", meta)
 	} else {
 		log.Error("Getting loaded mp3 info (like bitrate) failed")
 	}
@@ -316,6 +323,7 @@ func handlePlayerEvents() {
 
 			} else if e.Data.(play.PlayerState) == play.Paused {
 				s := player.GetStatus()
+				log.Debug("Player changed to paused. Status is %v", s)
 				// If we just changed to Paused then we may have loaded a new song.
 				if len(s.Path) != 0 {
 					meta = findMp3ByPath(s.Path)
@@ -527,6 +535,8 @@ func main() {
 	initLogging()
 	log = logging.MustGetLogger("server")
 	log.Info("Used config file %v", viper.ConfigFileUsed())
+
+	prefix = Prefix(viper.GetString("prefix"))
 
 	var err error
 

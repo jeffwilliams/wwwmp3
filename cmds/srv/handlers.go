@@ -3,14 +3,12 @@ package main
 import (
 	"encoding/json"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jeffwilliams/wwwmp3/play"
 	"github.com/jeffwilliams/wwwmp3/scan"
-	"github.com/spf13/viper"
 )
 
 // queryVal returns the first value for the GET query variable with name `key`.
@@ -24,9 +22,8 @@ func queryVal(r *http.Request, key string) (rs string) {
 
 // prependPrefix prepents the configured prefix to the MP3 path
 func prependPrefix(fields map[string]string) {
-	prefix := viper.GetString("prefix")
-	if v, ok := fields["path"]; ok && prefix != "" {
-		fields["path"] = path.Join(prefix, v)
+	if v, ok := fields["path"]; ok {
+		fields["path"] = prefix.apply(v)
 	}
 }
 
