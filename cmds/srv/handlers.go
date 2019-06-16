@@ -367,17 +367,18 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	log.Notice("Websocket connection from %s %v", ws.RemoteAddr(), userAgent)
 
 	defer log.Notice("Websocket handler for %s exiting", ws.RemoteAddr())
+	defer ws.Close()
 
 	// Send the full status to the browser
 	d, err := jsonFullStatus(player.GetStatus(), meta, listQueue(queue), pathsToMetadatas(recent.Slice()), repeatMode)
 	if err != nil {
-		log.Error("Error encoding Player event as JSON: %v", err)
+		log.Error("Websock %v: Error encoding Player event as JSON: %v", ws.RemoteAddr(), err)
 		return
 	}
-	log.Notice("Writing complete status to websocket %s", ws.RemoteAddr())
+	log.Notice("Websock %v: Writing complete status to websocket", ws.RemoteAddr())
 	err = websockWrite(ws, d)
 	if err != nil {
-		log.Error("Error writing to websocket %s: %v. Handler for socket is terminating.", ws.RemoteAddr(), err)
+		log.Error("Websock %v: Error writing to websocket: %v. Handler for socket is terminating.", ws.RemoteAddr(), err)
 		// Client is probably gone. Close our channel and exit.
 		return
 	}
@@ -403,8 +404,7 @@ loop:
 		case e, ok := <-c:
 			if !ok {
 				// Player died...
-				log.Error("Player closed event channel. Closing websocket %v", ws.RemoteAddr())
-				ws.Close()
+				log.Error("Websock %v: Player closed event channel.", ws.RemoteAddr())
 				break loop
 			}
 
@@ -415,36 +415,40 @@ loop:
 		case e, ok := <-scanEvents:
 			if !ok {
 				// Something closed the scanner channel.
-				log.Error("Scanner channel was closed. Closing websocket %v", ws.RemoteAddr())
+				log.Error("Websock %v: Scanner channel was closed.", ws.RemoteAddr())
 				ws.Close()
 				break loop
 			}
 
 			d, err = jsonScan(e.(*scan.Metadata))
 			if err != nil {
-				log.Error("Error encoding metadata as JSON: %v", err)
+				log.Error("Websock %v: Error encoding metadata as JSON: %v", ws.RemoteAddr(), err)
 				// Hopefully the next one works...
 				continue loop
 			}
 			err = websockWrite(ws, d)
 			if err != nil {
-				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
+				log.Error("Websock %v: Error writing to websocket: %v", ws.RemoteAddr(), err)
 				// Client is probably gone. Close our channel and exit.
 				break loop
 			}
 		case _ = <-repeatModeChanged:
 			m, err := jsonRepeat(repeatMode)
 			if err != nil {
-				log.Error("Error encoding metadata as JSON: %v", err)
+				log.Error("Websock %v: Error encoding metadata as JSON: %v", ws.RemoteAddr(), err)
 				// Hopefully the next one works...
 				continue loop
 			}
 			err = websockWrite(ws, m)
 			if err != nil {
-				log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
+				log.Error("Websock %v: Error writing to websocket: %v", ws.RemoteAddr(), err)
 				// Client is probably gone. Close our channel and exit.
 				break loop
 			}
 		}
 	}
+
+	eventTee.Del(c)
+	scanTee.Del(scanEvents)
+	repeatModeTee.Del(repeatModeChanged)
 }
