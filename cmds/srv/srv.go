@@ -72,11 +72,16 @@ var (
 
 	// When the repeatMode is changed, this tee is written to.
 	repeatModeTee = tee.New()
+
+	// prefix to prepend to MP3 paths before playing them
+	prefix Prefix
 )
 
 // findMp3ByPath returns the mp3 information for the mp3 with the specified path.
 func findMp3ByPath(path string) map[string]string {
 	ch := make(chan map[string]string)
+
+	path = prefix.remove(path)
 
 	go scan.FindMp3sInDb(
 		db,
@@ -108,6 +113,8 @@ func setMetainfo() {
 		meta["rate"] = strconv.Itoa(info.Rate)
 		meta["duration"] = strconv.FormatFloat(info.Duration, 'f', -1, 64)
 		meta["sec_per_sample"] = strconv.FormatFloat(info.Sps, 'f', -1, 64)
+
+		log.Debug("Setting metainfo for current song to %v", meta)
 	} else {
 		log.Error("Getting loaded mp3 info (like bitrate) failed")
 	}
@@ -207,7 +214,41 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 	return
 }
 
-func openDb(path string) (mp3db scan.Mp3Db, err error) {
+func waitForDb(path, timeout string) (err error) {
+	var d time.Duration
+	d, err = time.ParseDuration(timeout)
+	if err != nil {
+		log.Error("Error parsing db-open-timeout: %v. Defaulting to 1 minute.", err)
+		d = time.Duration(1 * time.Minute)
+		err = nil
+	}
+
+	if d > 0 {
+		start := time.Now()
+		for {
+			if time.Now().Sub(start) > d {
+				err = fmt.Errorf("Timeout waiting for database file to exist")
+				break
+			}
+
+			_, err = os.Stat(path)
+			if err == nil || !os.IsNotExist(err) {
+				break
+			}
+			log.Notice("Database file doesn't exist. Will retry in 2 seconds")
+			time.Sleep(2 * time.Second)
+		}
+	}
+	return
+}
+
+func openDb(path, timeout string) (mp3db scan.Mp3Db, err error) {
+
+	err = waitForDb(path, timeout)
+	if err != nil {
+		return
+	}
+
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return
@@ -282,6 +323,7 @@ func handlePlayerEvents() {
 
 			} else if e.Data.(play.PlayerState) == play.Paused {
 				s := player.GetStatus()
+				log.Debug("Player changed to paused. Status is %v", s)
 				// If we just changed to Paused then we may have loaded a new song.
 				if len(s.Path) != 0 {
 					meta = findMp3ByPath(s.Path)
@@ -329,7 +371,8 @@ func scanDirs(dirs []string) {
 	// Since we are running in a separate goroutine we need our own connection to the database:
 	// "Multi-thread. In this mode, SQLite can be safely used by multiple threads provided that
 	// no single database connection is used simultaneously in two or more threads."
-	db, err := openDb(viper.GetString("db"))
+	db, err := openDb(viper.GetString("db"), "0")
+
 	if err != nil {
 		log.Fatalf("Error opening scanner connection to database: %v", err)
 		os.Exit(1)
@@ -410,17 +453,21 @@ func findWwwDir() string {
 func initViper() {
 	pflag.IntP("port", "p", 2001, "TCP Port to listen on")
 	pflag.StringP("db", "d", "", "Database containing mp3 info")
+	pflag.StringP("prefix", "x", "", "Prefix to prepend to paths read from the database")
+	pflag.StringP("db-open-timeout", "", "1m", "If the database file doesn't exist, keep trying to open it for this long before exiting")
 	pflag.StringP("log", "l", "", "File to write log messages to. Defaults to stdout if not specified.")
 	pflag.StringP("loglevel", "e", "", "Minimum severity of log messages to write. One of DEBUG, INFO, NOTICE, WARNING, ERROR, or CRITICAL")
-	pflag.IntP("max_recent", "r", 100, "Maximum number of songs in the Recently Played list.")
+	pflag.IntP("max-recent", "r", 100, "Maximum number of songs in the Recently Played list.")
 
 	viper.BindPFlags(pflag.CommandLine)
 
 	viper.SetDefault("db", "mp3.db")
+	viper.SetDefault("prefix", "")
 	viper.SetDefault("port", 2001)
 	viper.SetDefault("log", "")
 	viper.SetDefault("loglevel", "DEBUG")
-	viper.SetDefault("max_recent", 100)
+	viper.SetDefault("max-recent", 100)
+	viper.SetDefault("db-open-timeout", 100)
 
 	// Config file basename. Actual config file is config.yaml, .toml, etc.
 	viper.SetConfigName("config")
@@ -449,6 +496,9 @@ func genConfig() {
 	fmt.Fprintln(file, "## Path to the sqlite3 database that contains the mp3 information.")
 	fmt.Fprintln(file, "db: 'mp3.db'")
 	fmt.Fprintln(file, "")
+	fmt.Fprintln(file, "## Prefix to prepend to paths read from the database")
+	fmt.Fprintln(file, "prefix: ''")
+	fmt.Fprintln(file, "")
 	fmt.Fprintln(file, "## File to write logs to. If this is not specified, stdout is used.")
 	fmt.Fprintln(file, "# log: '/var/log/wwwmp3/wwwmp3.log'")
 	fmt.Fprintln(file, "")
@@ -456,7 +506,10 @@ func genConfig() {
 	fmt.Fprintln(file, "loglevel: 'DEBUG'")
 	fmt.Fprintln(file, "")
 	fmt.Fprintln(file, "## Maximum number of songs in the Recently Played list.")
-	fmt.Fprintln(file, "max_recent: 100")
+	fmt.Fprintln(file, "max-recent: 100")
+	fmt.Fprintln(file, "")
+	fmt.Fprintln(file, "## If the database file doesn't exist, keep trying to open it for this long before exiting. ")
+	fmt.Fprintln(file, "db-open-timeout: 1m")
 	fmt.Fprintln(file, "")
 
 	file.Close()
@@ -483,10 +536,12 @@ func main() {
 	log = logging.MustGetLogger("server")
 	log.Info("Used config file %v", viper.ConfigFileUsed())
 
+	prefix = Prefix(viper.GetString("prefix"))
+
 	var err error
 
 	// Open database
-	db, err = openDb(viper.GetString("db"))
+	db, err = openDb(viper.GetString("db"), viper.GetString("db-open-timeout"))
 	if err != nil {
 		log.Fatalf("Error opening database %v: %v", viper.GetString("db"), err)
 		os.Exit(1)

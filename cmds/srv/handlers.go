@@ -2,12 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/jeffwilliams/wwwmp3/play"
-	"github.com/jeffwilliams/wwwmp3/scan"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jeffwilliams/wwwmp3/play"
+	"github.com/jeffwilliams/wwwmp3/scan"
 )
 
 // queryVal returns the first value for the GET query variable with name `key`.
@@ -17,6 +18,13 @@ func queryVal(r *http.Request, key string) (rs string) {
 		rs = v[0]
 	}
 	return
+}
+
+// prependPrefix prepents the configured prefix to the MP3 path
+func prependPrefix(fields map[string]string) {
+	if v, ok := fields["path"]; ok {
+		fields["path"] = prefix.apply(v)
+	}
 }
 
 // Respond to requests for mp3 metadata: lists of artists, titles, song paths, etc.
@@ -88,6 +96,8 @@ func serveMeta(w http.ResponseWriter, r *http.Request) {
 			if j > 0 {
 				w.Write([]byte(",\n"))
 			}
+
+			prependPrefix(m)
 
 			enc.Encode(m)
 			j++
