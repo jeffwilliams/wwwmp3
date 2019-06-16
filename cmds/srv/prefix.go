@@ -17,7 +17,11 @@ func (p Prefix) apply(filepath string) string {
 
 func (p Prefix) remove(filepath string) string {
 	if len(p) > 0 && strings.HasPrefix(filepath, string(p)) {
-		return filepath[len(p):]
+		res := filepath[len(p):]
+		if path.IsAbs(res) && len(res) > 1 {
+			res = res[1:]
+		}
+		return res
 	}
 	return filepath
 }
