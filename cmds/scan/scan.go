@@ -174,7 +174,7 @@ func main() {
 
 		printer := printProgNonblocking()
 
-		succCnt, errCnt = scan.ScanMp3sToDb(flag.Arg(0), db, printer)
+		succCnt, errCnt = scan.ScanMp3sToDb(flag.Arg(0), db, nil, printer)
 	}
 	fmt.Printf("\r")
 	fmt.Printf("\n")

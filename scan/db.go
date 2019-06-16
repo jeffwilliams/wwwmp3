@@ -87,9 +87,12 @@ func CreateMp3Db(db *sql.DB) (r Mp3Db, err error) {
 	return
 }
 
+type StringTransform func(string) string
+type ScanCallback func(m *Metadata, err error)
+
 // ScanMp3sToDb scans a directory tree for mp3 files and updates `db` with the new mp3 information found.
 // If `callback` is not nil, it is called each metadata.
-func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error)) (succCnt, errCnt int) {
+func ScanMp3sToDb(basedir string, db Mp3Db, pathTransform StringTransform, callback ScanCallback) (succCnt, errCnt int) {
 	c := make(chan Metadata)
 
 	go ScanMp3s(basedir, c)
@@ -127,6 +130,10 @@ func ScanMp3sToDb(basedir string, db Mp3Db, callback func(m *Metadata, err error
 		} else {
 			// Row exists.
 			stmt = tx.Stmt(db.stmtUpdateMp3)
+		}
+
+		if pathTransform != nil {
+			m.Path = pathTransform(m.Path)
 		}
 
 		_, err = stmt.Exec(m.Artist, m.Album, m.Title, m.Tracknum, m.Path)

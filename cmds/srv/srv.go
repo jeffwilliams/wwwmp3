@@ -349,7 +349,7 @@ func scanDirs(dirs []string) {
 
 	for _, d := range dirs {
 		log.Info("Scanning directory %v", d)
-		scan.ScanMp3sToDb(d, db, callback)
+		scan.ScanMp3sToDb(d, db, nil, callback)
 		log.Info("Done scanning directory %v", d)
 	}
 	scanTee.In <- (*scan.Metadata)(nil)
