@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jeffwilliams/statetrc"
 	"github.com/jeffwilliams/wwwmp3/play"
 	"github.com/jeffwilliams/wwwmp3/scan"
 )
@@ -30,6 +32,9 @@ func prependPrefix(fields map[string]string) {
 // Respond to requests for mp3 metadata: lists of artists, titles, song paths, etc.
 func serveMeta(w http.ResponseWriter, r *http.Request) {
 	timer := time.Now()
+
+	trc := TraceEnter("/serveMeta", nil)
+	defer trc.Leave()
 
 	// Parse a query value which is a comma separated list. If the value doesn't appear, return the empty list
 	queryList := func(key string) (l []string) {
@@ -80,6 +85,7 @@ func serveMeta(w http.ResponseWriter, r *http.Request) {
 
 		ch := make(chan map[string]string)
 
+		t := TraceEnter("/serveMeta/scan.FindMp3sInDb", nil)
 		go scan.FindMp3sInDb(
 			db,
 			fields,
@@ -88,6 +94,7 @@ func serveMeta(w http.ResponseWriter, r *http.Request) {
 			ch,
 			&scan.Paging{PageSize: pageSize, Page: page},
 			nil)
+		t.Leave()
 
 		enc := json.NewEncoder(w)
 		w.Write([]byte("[\n"))
@@ -114,21 +121,34 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "servePlayer: " + r.Method + " " + r.URL.Path + " - "
 	log.Notice("%s requested", logPrefix)
 
+	trc := TraceEnter("/servePlayer", nil)
+	defer trc.Leave()
+
 	if r.Method == "GET" {
 		if r.URL.Path == "/player/play" {
 			log.Notice("%s play", logPrefix)
+
+			t := TraceEnter("/servePlayer/player.Play", nil)
 			err := player.Play()
+			t.Leave()
+
 			if err != nil {
 				log.Error("%s player.Play() returned error: %v", logPrefix, err)
 				w.WriteHeader(500)
 				w.Write([]byte(err.Error()))
 			}
 		} else if r.URL.Path == "/player/pause" {
+			t := TraceEnter("/servePlayer/player.Pause", nil)
 			player.Pause()
+			t.Leave()
 		} else if r.URL.Path == "/player/stop" {
+			t := TraceEnter("/servePlayer/player.Stop", nil)
 			player.Stop()
+			t.Leave()
 		} else if r.URL.Path == "/player/volume" {
+			t := TraceEnter("/servePlayer/play.GetVolume", nil)
 			v, err := play.GetVolume()
+			t.Leave()
 			if err != nil {
 				log.Error("%s play.GetVolume() returned error: %v", logPrefix, err)
 				w.WriteHeader(500)
@@ -172,7 +192,11 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			log.Notice("Enqueuing file %s", req.File)
+
+			t := TraceEnter("/servePlayer/queue.Enqueue", nil)
 			queue.Enqueue(req.File)
+			t.Leave()
 		} else if r.URL.Path == "/player/queue.move" {
 			req := struct {
 				Indexes []int
@@ -183,7 +207,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			t := TraceEnter("/servePlayer/queue.Move", nil)
 			queue.Move(req.Indexes, req.Delta)
+			t.Leave()
 		} else if r.URL.Path == "/player/queue.move_to_top" {
 			req := struct {
 				Indexes []int
@@ -193,7 +219,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			t := TraceEnter("/servePlayer/queue.MoveToTop", nil)
 			queue.MoveToTop(req.Indexes)
+			t.Leave()
 		} else if r.URL.Path == "/player/queue.remove" {
 			req := struct {
 				Indexes []int
@@ -203,7 +231,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			t := TraceEnter("/servePlayer/queue.Remove", nil)
 			queue.Remove(req.Indexes)
+			t.Leave()
 		} else if r.URL.Path == "/player/volume" {
 			req := struct {
 				Volume int
@@ -213,7 +243,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			t := TraceEnter("/servePlayer/player.SetVolume", nil)
 			player.SetVolume(byte(req.Volume))
+			t.Leave()
 		} else if r.URL.Path == "/player/seek" {
 			req := struct {
 				Seek int
@@ -224,7 +256,9 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 			}
 
 			log.Notice("%s seek %v", logPrefix, req.Seek)
+			t := TraceEnter("/servePlayer/play.Seek", nil)
 			player.Seek(req.Seek)
+			t.Leave()
 		} else if r.URL.Path == "/player/repeat_mode" {
 			req := struct {
 				Mode string
@@ -244,18 +278,25 @@ func servePlayer(w http.ResponseWriter, r *http.Request) {
 
 			repeatMode = r
 
+			t := TraceEnter("/servePlayer/player.SetRepeat", nil)
 			if repeatMode == RepeatOne {
 				player.SetRepeat(true)
 			} else {
 				player.SetRepeat(false)
 			}
+			t.Leave()
+
+			t = TraceEnter("/servePlayer/repeatModeTee.In.write", nil)
 			repeatModeTee.In <- struct{}{}
+			t.Leave()
 		}
 	}
 }
 
 func enterScanning() bool {
+	t := TraceEnter("/enterScanning", nil)
 	scanMutex.Lock()
+	defer t.Leave()
 	defer scanMutex.Unlock()
 
 	if scanning {
@@ -351,6 +392,9 @@ State is an enumeration with the values:
 Meta may be null if there is no loaded mp3.
 */
 func serveWebsock(w http.ResponseWriter, r *http.Request) {
+	trc := TraceEnter("/serveWebsock", nil)
+	defer trc.Leave()
+
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", 405)
 		return
@@ -365,6 +409,10 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Notice("Websocket connection from %s %v", ws.RemoteAddr(), userAgent)
+
+	traceId := fmt.Sprintf("/serveWebsock/%s", ws.RemoteAddr())
+	t := TraceEnter(traceId, nil)
+	defer t.Leave()
 
 	defer log.Notice("Websocket handler for %s exiting", ws.RemoteAddr())
 	defer ws.Close()
@@ -385,16 +433,37 @@ func serveWebsock(w http.ResponseWriter, r *http.Request) {
 
 	// Add a new channel to the tee that we will use to detect changes
 	c := make(chan interface{})
+	t2 := TraceEnter("/eventTee.Add", nil)
 	eventTee.Add(c)
-	defer eventTee.Del(c)
+	t2.Leave()
+
+	defer func() {
+		t := TraceEnter("/eventTee.Del", nil)
+		eventTee.Del(c)
+		t.Leave()
+	}()
 
 	scanEvents := make(chan interface{})
+	t2 = TraceEnter("/scanTee.Add", nil)
 	scanTee.Add(scanEvents)
-	defer scanTee.Del(scanEvents)
+	t2.Leave()
+
+	defer func() {
+		t := TraceEnter("/scanTee.Del", nil)
+		scanTee.Del(scanEvents)
+		t.Leave()
+	}()
 
 	repeatModeChanged := make(chan interface{})
+	t2 = TraceEnter("/repeatModeTee.Add", nil)
 	repeatModeTee.Add(repeatModeChanged)
-	defer repeatModeTee.Del(repeatModeChanged)
+	t2.Leave()
+
+	defer func() {
+		t := TraceEnter("/repeatModeTee.Del", nil)
+		repeatModeTee.Del(repeatModeChanged)
+		t.Leave()
+	}()
 
 	//ws.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
 
@@ -451,4 +520,11 @@ loop:
 	eventTee.Del(c)
 	scanTee.Del(scanEvents)
 	repeatModeTee.Del(repeatModeChanged)
+}
+
+// Respond to requests for internal debug tracing info
+func serveTrace(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/plain")
+
+	fmt.Fprintf(w, "%s", statetrc.List(statetrc.ById))
 }

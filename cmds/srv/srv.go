@@ -3,6 +3,15 @@
 // This command expects an mp3 database to be set up and filled.
 package main
 
+/*
+ TODO: Have a state store to help with debugging. Stores what the current state is:
+		1. WHen a function is entered and exited, store that in the state. On exit it stores that
+				the function was entered (at some time) and when exited remove that state. Can be used
+				to tell if something is blocked for a long time
+
+		2. How many websockets are open now, etc.
+*/
+
 import (
 	"database/sql"
 	"flag"
@@ -182,7 +191,9 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 	)
 
 	if event.Type == play.StateChange {
+		t := TraceEnter("/websockHandlePlayerEvent/player.GetStatus", nil)
 		s := player.GetStatus()
+		t.Leave()
 		if event.Data.(play.PlayerState) == play.Paused || event.Data.(play.PlayerState) == play.Empty {
 			// If we just changed to Paused then we may have loaded a new song, and if we changed to
 			// Empty we have no song. In these cases send _all_ the information (including song metainfo).
@@ -205,7 +216,11 @@ func websockHandlePlayerEvent(ws *websocket.Conn, event play.Event) (wsValid boo
 		return
 	}
 	log.Notice("Writing status to websocket %v", ws.RemoteAddr())
+
+	t := TraceEnter("/websockHandlePlayerEvent/websockWrite", nil)
 	err = websockWrite(ws, d)
+	t.Leave()
+
 	if err != nil {
 		log.Error("Error writing to websocket %v: %v", ws.RemoteAddr(), err)
 		// Client is probably gone. Close our channel and exit
@@ -316,33 +331,51 @@ func handlePlayerEvents() {
 			if e.Data.(play.PlayerState) == play.Empty {
 				if repeatMode == RepeatAll {
 					// Re-enqueue this sucker
+					t := TraceEnter("/handlePlayerEvents/queue.Enqueue", nil)
 					queue.Enqueue(recent.Held)
+					t.Leave()
 				}
 				// Commit the mp3 that just finished to the recent list
+				t := TraceEnter("/handlePlayerEvents/recent.Commit", nil)
 				recent.Commit()
+				t.Leave()
 
 			} else if e.Data.(play.PlayerState) == play.Paused {
+				t := TraceEnter("/handlePlayerEvents/player.GetStatus.1", nil)
 				s := player.GetStatus()
+				t.Leave()
+
 				log.Debug("Player changed to paused. Status is %v", s)
 				// If we just changed to Paused then we may have loaded a new song.
 				if len(s.Path) != 0 {
+					t := TraceEnter("/handlePlayerEvents/findMp3ByPath", nil)
 					meta = findMp3ByPath(s.Path)
+					t.Leave()
+
 					if meta == nil {
 						log.Error("Loaded mp3, but can't find metainformation for it...")
 					}
 				}
+				t = TraceEnter("/handlePlayerEvents/setMetainfo", nil)
 				setMetainfo()
+				t.Leave()
 			} else if e.Data.(play.PlayerState) == play.Empty {
 				// If we changed to Empty we have no song.
 				meta = nil
 			} else if e.Data.(play.PlayerState) == play.Playing {
+				t := TraceEnter("/handlePlayerEvents/player.GetStatus.2", nil)
 				s := player.GetStatus()
+				t.Leave()
 				// Hold the current mp3, and add it to the list when it's stopped.
+				t = TraceEnter("/handlePlayerEvents/recent.Commit", nil)
 				recent.Hold(s.Path)
+				t.Leave()
 			}
 		}
 
+		t := TraceEnter("/handlePlayerEvents/eventTee.In.write", nil)
 		eventTee.In <- e
+		t.Leave()
 	}
 }
 
@@ -562,6 +595,7 @@ func main() {
 	http.HandleFunc("/player/", servePlayer)
 	http.HandleFunc("/scan/", serveScan)
 	http.HandleFunc("/playerEvents", serveWebsock)
+	http.HandleFunc("/trace", serveTrace)
 
 	if wwwDir := findWwwDir(); len(wwwDir) > 0 {
 		http.Handle("/", http.FileServer(http.Dir(wwwDir)))
