@@ -110,6 +110,14 @@ func findMp3ByPath(path string) map[string]string {
 	return r
 }
 
+// findMp3ByPathWithPrefix returns the mp3 information for the mp3 with the specified path,
+// but also appends the prefix
+func findMp3ByPathWithPrefix(path string) map[string]string {
+	m := findMp3ByPath(path)
+	prependPrefix(m)
+	return m
+}
+
 func setMetainfo() {
 	if meta == nil {
 		meta = make(map[string]string)
@@ -134,7 +142,7 @@ func pathsToMetadatas(list []string) (result []map[string]string) {
 	result = make([]map[string]string, 0)
 
 	for _, path := range list {
-		m := findMp3ByPath(path)
+		m := findMp3ByPathWithPrefix(path)
 		if m == nil {
 			m = map[string]string{
 				"artist": "?",
@@ -153,7 +161,7 @@ func queueElemsToMetadatas(list []play.QueueElem) (result []map[string]string) {
 	result = make([]map[string]string, 0)
 
 	for _, elem := range list {
-		m := findMp3ByPath(elem.Filename)
+		m := findMp3ByPathWithPrefix(elem.Filename)
 		if m == nil {
 			m = map[string]string{
 				"artist": "?",
@@ -368,6 +376,7 @@ func handlePlayerEvents() {
 				t.Leave()
 				// Hold the current mp3, and add it to the list when it's stopped.
 				t = TraceEnter("/handlePlayerEvents/recent.Commit", nil)
+				log.Debug("Adding path '%s' to recently played Hold.", s.Path)
 				recent.Hold(s.Path)
 				t.Leave()
 			}
